@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "rev": 3,
+  "title": "Loam, soil health analytics",
+  "bodyAttrs": "",
+  "sections": [
+    { "slug": "nav", "takes": ["take-1.html"], "active": 0 },
+    { "slug": "hero", "takes": ["take-1.html", "take-2.html"], "active": 0 },
+    { "slug": "features", "takes": ["take-1.html"], "active": 0 }
+  ]
+}
