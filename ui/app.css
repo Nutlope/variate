@@ -66,7 +66,12 @@ header.bar .right { margin-left: auto; display: flex; align-items: center; gap: 
 .frame-wrap.hi .frame-box { box-shadow: inset 0 0 0 2px rgba(58, 51, 224, 0.45); }
 .frame-wrap:hover .frame-box { box-shadow: inset 0 0 0 1px var(--line-2); }
 .frame-wrap.selected:hover .frame-box { box-shadow: inset 0 0 0 2px var(--accent); }
-.frame-box iframe { display: block; border: 0; background: #fff; transform-origin: 0 0; }
+/* Sections are click-to-select surfaces, so the iframe does not eat pointer
+   events. Text-edit mode flips it back on so you can click into copy. */
+.frame-box iframe { display: block; border: 0; background: #fff; transform-origin: 0 0; pointer-events: none; }
+.frame-wrap.editing .frame-box iframe { pointer-events: auto; }
+.frame-wrap.editing .frame-box { box-shadow: inset 0 0 0 2px var(--accent); }
+.frame-wrap.editing .toolbar [data-action="edit"] { background: var(--accent); }
 
 .slug-chip {
   position: absolute; top: 10px; left: 10px; z-index: 3;
@@ -187,6 +192,24 @@ header.bar .right { margin-left: auto; display: flex; align-items: center; gap: 
 .action-row { display: flex; gap: 7px; }
 .action-row .action { margin-top: 7px; }
 
+/* design tokens ------------------------------------------------------------ */
+.tokens { padding: 0; overflow: hidden; }
+.tok-head { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 13px; }
+.tok-caret { color: var(--fg-dim); font-size: 11px; transition: transform 0.2s; }
+.tok-caret.open { transform: rotate(0deg); }
+.tok-caret:not(.open) { transform: rotate(-90deg); }
+.tok-body { padding: 0 13px 13px; }
+.tok-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
+.tok-color { display: flex; flex-direction: column; gap: 4px; cursor: pointer; min-width: 0; }
+.tok-color input[type="color"] { width: 100%; height: 30px; border: 1px solid var(--line); border-radius: 7px; padding: 0; background: none; cursor: pointer; }
+.tok-color input[type="text"] { border: 1px solid var(--line); border-radius: 7px; padding: 5px 6px; font-size: 11px; font-family: var(--mono); outline: none; background: var(--ink-2); }
+.tok-color span { font-family: var(--mono); font-size: 9.5px; color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tok-others { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.tok-field { display: grid; grid-template-columns: 1fr 1.2fr; align-items: center; gap: 8px; }
+.tok-field span { font-family: var(--mono); font-size: 10.5px; color: var(--fg-mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tok-field input { border: 1px solid var(--line); border-radius: 7px; padding: 5px 7px; font-size: 11px; font-family: var(--mono); outline: none; background: var(--ink-2); }
+.tok-field input:focus, .tok-color input:focus { border-color: var(--accent); }
+
 .presence { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--fg-dim); }
 .presence .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line-2); }
 .presence.on .dot { background: var(--green); }
@@ -202,17 +225,37 @@ header.bar .right { margin-left: auto; display: flex; align-items: center; gap: 
 #toast button { color: #b6b0ff; font-weight: 600; }
 #toast .x { color: var(--fg-dim); }
 
-/* sketch modal ------------------------------------------------------------------ */
-#sketch-modal { position: fixed; inset: 0; z-index: 60; background: rgba(25, 22, 17, 0.45); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; padding: 20px; }
-.sketch-card { background: var(--surface); border: 1px solid var(--line-2); border-radius: 16px; width: min(860px, 96vw); padding: 16px; box-shadow: 0 30px 80px -30px rgba(20, 16, 40, 0.5); }
-.sketch-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.sketch-head .right { margin-left: auto; display: flex; gap: 6px; }
-.sketch-canvas { position: relative; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden;
-  background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 22px 22px; }
-.sketch-canvas svg { display: block; width: 100%; height: auto; touch-action: none; cursor: crosshair; }
-.sketch-foot { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
-.sketch-foot input { flex: 1; border: 1px solid var(--line); background: var(--ink-2); border-radius: 8px; padding: 8px 10px; font-size: 13px; outline: none; }
-.tagger { position: absolute; z-index: 5; background: var(--surface); border: 1px solid var(--line-2); border-radius: 10px; padding: 8px; width: 250px; box-shadow: 0 14px 40px -16px rgba(20, 16, 40, 0.4); }
+/* in-place sketch (tracing paper over the real section) -------------------------- */
+.frame-wrap.sketching { z-index: 30; }
+.frame-wrap.sketching .frame-box { box-shadow: inset 0 0 0 2px var(--accent); }
+.frame-wrap.sketching iframe { opacity: 0.12; filter: grayscale(0.35); pointer-events: none; }
+.frame-wrap.sketching .toolbar, .frame-wrap.sketching .slug-chip { display: none; }
+.sketch-surface { position: absolute; inset: 0; z-index: 8; }
+.sketch-surface svg { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+.sketch-bar {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 10;
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(25, 22, 17, 0.9); backdrop-filter: blur(4px); border-radius: 10px; padding: 6px 8px;
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.4);
+}
+.sketch-bar .sk-title { color: #f3efe6; font-family: var(--mono); font-size: 11px; padding: 0 4px; }
+.sketch-bar .sk-seg { display: flex; gap: 2px; background: rgba(255, 255, 255, 0.08); border-radius: 7px; padding: 2px; }
+.sketch-bar .sk-seg button { color: #d9d4ca; font-family: var(--mono); font-size: 11.5px; padding: 4px 9px; border-radius: 5px; }
+.sketch-bar .sk-seg button.on { background: var(--accent); color: #fff; }
+.sketch-bar .sk-seg button:hover:not(.on) { background: rgba(255, 255, 255, 0.1); }
+.sketch-foot {
+  position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 10;
+  display: flex; align-items: center; gap: 8px; width: min(640px, 90%);
+  background: rgba(25, 22, 17, 0.9); backdrop-filter: blur(4px); border-radius: 10px; padding: 7px 8px;
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.4);
+}
+.sketch-foot input { flex: 1; border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.06); color: #f3efe6; border-radius: 8px; padding: 8px 11px; font-size: 13px; outline: none; }
+.sketch-foot input::placeholder { color: #9a9284; }
+.sketch-foot .ghost { color: #d9d4ca; font-size: 12.5px; padding: 8px 12px; border-radius: 8px; }
+.sketch-foot .ghost:hover { background: rgba(255, 255, 255, 0.1); }
+.sketch-foot .go { background: var(--accent); color: #fff; border-radius: 8px; padding: 9px 16px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.sketch-foot .go:hover { background: var(--accent-lo); }
+.tagger { position: absolute; z-index: 12; background: var(--surface); border: 1px solid var(--line-2); border-radius: 10px; padding: 8px; width: 250px; box-shadow: 0 14px 40px -16px rgba(20, 16, 40, 0.4); }
 .tagger .row { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
 .tagger .chip { padding: 3px 8px; font-size: 11px; }
 .tagger input { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; font-size: 12px; outline: none; background: var(--ink-2); }

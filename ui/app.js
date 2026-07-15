@@ -1,7 +1,7 @@
 // variate studio: store + SSE + keyboard. Rendering lives in render.js,
 // the sketch pad in sketch.js.
 
-import { render } from "/ui/render.js";
+import { render, tickLive } from "/ui/render.js";
 import { op } from "/ui/api.js";
 
 export const store = {
@@ -20,7 +20,7 @@ export function setState(patch) {
   Object.assign(store, patch);
   if (patch.variateCount) localStorage.setItem("variate.count", String(patch.variateCount));
   if (patch.device) localStorage.setItem("variate.device", String(patch.device));
-  render(store);
+  render();
 }
 
 function onServerState(state) {
@@ -33,7 +33,7 @@ function onServerState(state) {
   store.prevHashes = new Map(state.sections.map((s) => [s.slug, s.hash]));
   if (store.selected && !state.sections.some((s) => s.slug === store.selected)) store.selected = null;
   store.state = state;
-  render(store);
+  render();
 }
 
 function connect() {
@@ -54,7 +54,7 @@ const isTyping = () => {
 
 window.addEventListener("keydown", (e) => {
   if (isTyping()) return;
-  if (document.getElementById("sketch-modal")) return; // the pad owns its keys
+  if (document.querySelector(".frame-wrap.sketching")) return; // the pad owns its keys
 
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === "z") {
@@ -90,7 +90,6 @@ fetch("/api/state").then((r) => r.json()).then(onServerState).catch(() => {
   document.getElementById("app").textContent = "cannot reach the studio server";
 });
 connect();
-setInterval(() => {
-  // Busy elapsed labels + agent presence tick without a full server round.
-  if (store.state) render(store);
-}, 1000);
+// The tick updates ONLY live-changing text (busy elapsed). It never touches
+// structure or any open input, so typing a prompt is never interrupted.
+setInterval(tickLive, 1000);

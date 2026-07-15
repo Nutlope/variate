@@ -13,11 +13,21 @@ page one section at a time; you art-direct from a live local preview:
 - **Prompt a section**: a scoped edit that touches nothing else.
 - **Add a section between sections**: a hairline blooms into a catalog
   (features, pricing, FAQ, waitlist form...) or a custom ask.
-- **Sketch a section**: draw a wireframe in the pad; it serializes into a
-  geometric blueprint (plus a PNG for vision models) and the agent implements
-  it in place, in the page's own design language.
+- **Sketch a section, on the section**: the real section dims to tracing
+  paper and you draw the new layout right on top of it, where the elements
+  actually are. It serializes into a geometric blueprint (plus a PNG for
+  vision models) and the agent redraws it in the page's own design language.
 - **Move, cut, swap takes, undo**: instant, no agent turn burned.
+- **Retune the whole page live**: a design-token editor over your `head.html`
+  `:root`. Drag a color or change a spacing value and every section restyles
+  instantly, no reload, no model turn.
+- **Edit copy in place**: click any text in a section and retype it; it saves
+  as a new take. No round trip to the agent for a headline tweak.
 - **Done**: one self-contained `dist/index.html`, no build step, no CDN.
+
+The deterministic tools (move, cut, take-pick, undo, tokens, text edits) never
+spend a model turn: the local server applies them and the agent only ever
+handles the genuinely generative asks (variate, edit, add, sketch, polish).
 
 Everything runs local: a zero-dependency Node server bound to 127.0.0.1, a
 file-queue bridge between the browser and the agent, no accounts, no

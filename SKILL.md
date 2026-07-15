@@ -105,10 +105,27 @@ Every take file is EXACTLY ONE `<section data-rb="<slug>">` element:
 8. No eyebrow labels above headings, no italic display type, and whitespace
    is the luxury: generous padding, calm gaps, air around the type.
 
+## What the user can do without you (no request reaches the agent)
+
+The studio also has deterministic, instant tools the user drives directly.
+They never queue a request, but they DO change the files you build on, so
+always re-read fresh state before writing:
+
+- **Move / cut / pick a take / undo / redo** — manifest edits, applied by the
+  server.
+- **Design tokens** — a live editor over your `head.html` `:root` values.
+  The user can recolor or re-space the whole page in seconds; the server
+  rewrites `head.html`. So `head.html` may differ from what you last wrote:
+  re-read it before a polish or any head edit.
+- **Inline text edits** — the user can click text in a section and retype it;
+  the server saves the result as a new take of that section. So a section may
+  gain takes you did not draw.
+
 ## Rules of the road
 
 - Take files are immutable history; the user flips between them. Only add.
-- Re-read the manifest before every write; never trust a stale outline.
+- Re-read the manifest AND `head.html` before every write; never trust a stale
+  outline or an old design system (the user may have retuned tokens).
 - Only `head.html` may be edited in place, and only during bootstrap/polish;
   mention any head change in your ack note (undo cannot restore it).
 - Suggest a git commit of the workspace at good checkpoints.

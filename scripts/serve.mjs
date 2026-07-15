@@ -185,8 +185,20 @@ function normalizeTake(markup, slug) {
   return `<section data-rb="${slug}">${trimmed}</section>`;
 }
 
+// Live-edit bridge the studio talks to over postMessage: token overrides
+// (recolor/respace the whole page with no reload) and inline text editing
+// (click text, type, save one new take). Both are user-driven and local.
+// Only leaf text elements become editable, so typing can never mangle the
+// section's structure. Toggling off strips the edit affordances and serializes
+// the clean markup back to the studio, which commits it as a new take.
+// Editing only adds/removes contenteditable + a marker attribute on leaf text
+// elements, so a clean toggle leaves the markup byte-identical (the snapshot
+// guard below relies on this to avoid saving a no-op take). The edit outline
+// is drawn by the parent's .editing class, not by touching frame styles.
+const BRIDGE = `<script>(function(){var R=document.documentElement,TE='h1,h2,h3,h4,h5,h6,p,li,a,span,button,td,th,blockquote,figcaption,strong,em,small,label',snap=null;function sec(){return document.querySelector('[data-rb]')||document.body;}function leaves(){var out=[],all=sec().querySelectorAll(TE);for(var i=0;i<all.length;i++){var el=all[i];if(el.childElementCount===0&&el.textContent.trim())out.push(el);}return out;}window.addEventListener('message',function(e){var d=e.data;if(!d)return;if(d.type==='rb-tokens'&&d.vars){for(var k in d.vars){try{R.style.setProperty(k,d.vars[k]);}catch(_){}}}else if(d.type==='rb-edit'){var s=sec();if(d.on){snap=s.outerHTML;leaves().forEach(function(el){el.setAttribute('contenteditable','true');el.setAttribute('data-rb-e','1');});}else{sec().querySelectorAll('[data-rb-e]').forEach(function(el){el.removeAttribute('contenteditable');el.removeAttribute('data-rb-e');});var out=s.outerHTML;if(snap!==null&&out!==snap){try{parent.postMessage({type:'rb-edited',markup:out},'*');}catch(_){}}snap=null;}}});})();</script>`;
+
 function buildFrameDoc(head, bodyAttrs, markup, slug) {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${REVEAL_CSS}${head}</head><body ${bodyAttrs}>${IO_SHIM}${normalizeTake(markup, slug)}${reporterFor(slug)}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${REVEAL_CSS}${head}</head><body ${bodyAttrs}>${IO_SHIM}${normalizeTake(markup, slug)}${BRIDGE}${reporterFor(slug)}</body></html>`;
 }
 
 function assemblePage(head, bodyAttrs, markups) {
@@ -419,6 +431,49 @@ function writeExport() {
 }
 
 // ---------------------------------------------------------------------------
+// live edits (deterministic, no agent turn)
+
+/** Overwrite existing :root token values in head.html. Only known tokens are
+ *  touched; a value change makes the whole page reflow on the next reload. */
+function patchHeadTokens(tokens) {
+  let head = readSafe(HEAD);
+  if (head == null) return { error: "no head.html" };
+  const root = head.match(/:root\s*\{([\s\S]*?)\}/);
+  if (!root) return { error: "no :root block in head.html" };
+  let block = root[1];
+  let changed = 0;
+  for (const [name, value] of Object.entries(tokens)) {
+    if (!/^--[\w-]+$/.test(name)) continue;
+    const v = String(value).slice(0, 200).replace(/[;{}]/g, "");
+    const re = new RegExp(`(${name}\\s*:\\s*)([^;]*)(;)`);
+    if (re.test(block)) { block = block.replace(re, `$1${v}$3`); changed++; }
+  }
+  if (!changed) return { ok: true, changed: 0 };
+  head = head.replace(root[1], block);
+  atomicWrite(HEAD, head);
+  appendJournal("server", "tokens", `restyled ${changed} design token${changed === 1 ? "" : "s"}`, null);
+  return { ok: true, changed };
+}
+
+/** Commit inline-edited section markup as a new immutable take. */
+function writeTextTake(slug, markup) {
+  const m = readManifest();
+  const sec = m.sections.find((s) => s.slug === slug);
+  if (!sec) return { error: `no section "${slug}"` };
+  const dir = path.join(SECTIONS, slug);
+  fs.mkdirSync(dir, { recursive: true });
+  const ns = fs.readdirSync(dir).map((f) => Number(f.match(/take-(\d+)\.html/)?.[1] ?? 0));
+  const n = Math.max(0, ...ns) + 1;
+  const file = `take-${n}.html`;
+  fs.writeFileSync(path.join(dir, file), normalizeTake(markup, slug) + "\n");
+  const before = JSON.stringify(m);
+  sec.takes.push(file);
+  sec.active = sec.takes.length - 1;
+  commitOp(before, m, "text", `edited text in ${slug}`);
+  return { ok: true, take: n };
+}
+
+// ---------------------------------------------------------------------------
 // SSE hub + watcher
 
 const clients = new Set();
@@ -516,6 +571,7 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, body, { "Content-Type": MIME[path.extname(f)] ?? "text/plain" });
       }
       if (p === "/api/state") return sendJson(res, 200, computeState());
+      if (p === "/api/head") return sendJson(res, 200, { head: readSafe(HEAD) ?? "" });
       if (p === "/events") {
         res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
         res.write("retry: 1000\n\n");
@@ -597,6 +653,17 @@ const server = http.createServer(async (req, res) => {
         const file = writeExport();
         broadcast();
         return sendJson(res, 200, { path: file });
+      }
+      if (p === "/api/head") {
+        const out = patchHeadTokens(body?.tokens ?? {});
+        broadcast();
+        return sendJson(res, out.error ? 400 : 200, out);
+      }
+      if (p === "/api/text") {
+        if (!body?.slug || typeof body?.markup !== "string") return sendJson(res, 400, { error: "slug and markup required" });
+        const out = writeTextTake(body.slug, body.markup);
+        broadcast();
+        return sendJson(res, out.error ? 400 : 200, out);
       }
       return send(res, 404, "not found");
     }
