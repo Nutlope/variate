@@ -262,6 +262,8 @@ function buildChrome(slug) {
         <button data-action="cycle" data-slug="${esc(slug)}" data-dir="-1" aria-label="previous take">‹</button>
         <button disabled data-pager-text style="padding:6px 4px"></button>
         <button data-action="cycle" data-slug="${esc(slug)}" data-dir="1" aria-label="next take">›</button>
+        <button data-action="compare" data-slug="${esc(slug)}" title="compare all takes">⊞</button>
+        <button data-action="discard" data-slug="${esc(slug)}" title="discard this take">⌫</button>
       </div>
       <div class="grp">
         <button class="primary" data-action="variate" data-slug="${esc(slug)}"><span data-variate-label>variate ×1</span></button>
@@ -503,6 +505,13 @@ function onStackClick(e) {
     const s = store.state.sections.find((x) => x.slug === slug);
     const next = ((s.active + Number(b.dataset.dir)) % s.takes + s.takes) % s.takes;
     op({ op: "pick", slug, take: next }).catch(() => {});
+  } else if (a === "compare") { window.open(`/compare/${encodeURIComponent(slug)}`, "_blank"); }
+  else if (a === "discard") {
+    const s = store.state.sections.find((x) => x.slug === slug);
+    if (!s || s.takes < 2) return;
+    op({ op: "discard", slug, take: s.active }).then(() => {
+      toast(`discarded a take of ${slug}`, { label: "undo", run: () => op({ op: "undo" }).catch(() => {}) });
+    }).catch(() => {});
   } else if (a === "variate") { request("variate", { slug }, { count: store.variateCount }).catch(() => {}); setState({ openMenu: null }); }
   else if (a === "steer") { request("variate", { slug }, { count: store.variateCount, steer: b.dataset.steer }).catch(() => {}); setState({ openMenu: null }); }
   else if (a === "count") { store.variateCount = Number(b.dataset.n); localStorage.setItem("variate.count", b.dataset.n); if (openPop?.kind === "variate") refreshVariateMenu(openPop.el); for (const [, f] of frames) f.chrome.variateLabel.textContent = `variate ×${store.variateCount}`; }
@@ -556,7 +565,7 @@ function railSignature(st) {
     q: st.queue.map((x) => x.id + x.label),
     w: st.working.map((x) => x.id),
     d: st.recentDone.slice(0, 4).map((x) => x.id + x.result),
-    u: st.canUndo, r: st.canRedo, a: st.agent.listening, e: st.manifestError,
+    u: st.canUndo, r: st.canRedo, a: st.agent.mode, e: st.manifestError,
     act: st.activity.slice(0, 6).map((x) => x.seq),
   });
 }
@@ -607,10 +616,13 @@ function renderRail(st) {
     </div>
 
     <div class="card">
-      <div class="presence ${st.agent.listening ? "on" : ""}">
-        <span class="dot"></span>${st.agent.listening ? "agent standing by" : "agent not connected"}
+      <div class="presence ${st.agent.mode === "standing-by" ? "on" : st.agent.mode === "terminal" ? "mid" : ""}">
+        <span class="dot"></span>${
+          st.agent.mode === "standing-by" ? "agent standing by"
+          : st.agent.mode === "terminal" ? "agent in terminal mode · clicks land on its next turn"
+          : "agent not connected"}
       </div>
-      ${st.agent.listening ? "" : `<code>${esc(awaitCmd)}</code>`}
+      ${st.agent.mode === "away" ? `<code>${esc(awaitCmd)}</code>` : ""}
     </div>
 
     ${st.activity.length ? `<div class="card">

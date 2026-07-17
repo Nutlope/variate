@@ -1,12 +1,19 @@
 #!/usr/bin/env node
-// The agent's side of the variate bridge. Blocks until the user asks for
-// something in the studio, prints EXACTLY ONE JSON line to stdout, exits.
+// The agent's side of the variate bridge. Two modes:
 //
-//   node await.mjs --ws <workspace> [--ack <id> [--result ok|skipped|failed] [--note "..."]] [--timeout 90]
+//   node await.mjs --ws <ws> --drain [--ack <id> ...]
+//     Terminal mode (default workflow): claims EVERY queued studio request
+//     right now, prints them as ONE JSON array line, exits immediately.
+//     Exit 0 = array has requests; exit 2 = nothing waiting. Run it between
+//     conversational turns; never blocks the conversation.
 //
-// Exit codes: 0 = a request was delivered (fulfill it, then re-run with --ack)
-//             2 = idle timeout, nothing queued (just re-run)
-//             1 = hard error (message on stderr)
+//   node await.mjs --ws <ws> [--ack <id> ...] [--timeout 90]
+//     Studio mode: blocks until the user acts in the studio, prints EXACTLY
+//     ONE request as a JSON line, exits. Exit 0 = delivered; exit 2 = idle
+//     timeout (just re-run); exit 1 = hard error (stderr).
+//
+// Ack in either mode: --ack <id> [--result ok|skipped|failed] [--note "..."]
+// folds the previous fulfillment's ack into this invocation.
 //
 // Filesystem only, no network: requests/NNNN-*.json is queued, renaming it to
 // .working claims it (atomic, so concurrent awaits race safely), moving it to
@@ -20,7 +27,10 @@ const args = {};
 {
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i].startsWith("--")) args[argv[i].slice(2)] = argv[i + 1]?.startsWith("--") ? true : argv[++i];
+    if (!argv[i].startsWith("--")) continue;
+    const next = argv[i + 1];
+    // A flag with no value (end of argv, or another flag next) is boolean true.
+    args[argv[i].slice(2)] = next == null || next.startsWith("--") ? true : argv[++i];
   }
 }
 
@@ -73,7 +83,33 @@ if (args.ack) {
   }
 }
 
-// ---- 2. redeliver an orphaned claim first ----------------------------------
+// ---- 2. drain mode: claim everything queued, print an array, never block ----
+if (args.drain) {
+  beat();
+  const batch = [];
+  for (const w of listWorking()) {
+    const j = readJson(path.join(REQ, w));
+    if (j) { j.redelivered = true; batch.push(j); }
+  }
+  for (const f of listQueued()) {
+    const from = path.join(REQ, f);
+    const to = from + ".working";
+    try { fs.renameSync(from, to); } catch { continue; }
+    const j = readJson(to);
+    if (j) batch.push(j);
+  }
+  out(batch, batch.length ? 0 : 2);
+} else {
+  mainBlocking();
+}
+
+function mainBlocking() {
+  if (redeliver()) return;
+  if (claim()) return;
+  blockUntilRequest();
+}
+
+// ---- 3. redeliver an orphaned claim first ----------------------------------
 function redeliver() {
   const w = listWorking()[0];
   if (!w) return false;
@@ -84,7 +120,7 @@ function redeliver() {
   return true;
 }
 
-// ---- 3. claim the oldest queued request ------------------------------------
+// ---- 4. claim the oldest queued request ------------------------------------
 function claim() {
   for (const f of listQueued()) {
     const from = path.join(REQ, f);
@@ -100,10 +136,8 @@ function claim() {
   return false;
 }
 
-if (redeliver()) { /* exiting via out() */ }
-else if (claim()) { /* exiting via out() */ }
-else {
-  // ---- 4. block: watch + poll safety net + heartbeat -----------------------
+// ---- 5. block: watch + poll safety net + heartbeat --------------------------
+function blockUntilRequest() {
   beat();
   const beatTimer = setInterval(beat, 5000);
   const deadline = Date.now() + TIMEOUT_MS;

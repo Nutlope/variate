@@ -16,7 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   sha8, nowIso, readSafe, atomicWrite, readJsonSafe, statMtime, wsPaths,
-  buildFrameDoc, assemblePage, normalizeTake, validateTake, FRAME_CSP,
+  buildFrameDoc, buildComparePage, assemblePage, normalizeTake, validateTake, FRAME_CSP,
 } from "./core.mjs";
 
 // ---------------------------------------------------------------------------
@@ -221,6 +221,11 @@ function computeState() {
   });
 
   const hb = statMtime(HEARTBEAT);
+  const hbAge = hb != null ? Date.now() - hb : Infinity;
+  // Three presence states: a blocked await beats every 5s ("standing-by"); a
+  // terminal-mode agent only beats at drain moments ("terminal", clicks land
+  // on its next turn); anything older is "away".
+  const agentMode = hbAge < 15000 ? "standing-by" : hbAge < 300000 ? "terminal" : "away";
   return {
     ok: true,
     ws: WS,
@@ -235,7 +240,7 @@ function computeState() {
     activity: loadJournalTail(50).map(({ manifest: _m, ...rest }) => rest).reverse(),
     canUndo: undoStack.length > 0,
     canRedo: redoStack.length > 0,
-    agent: { listening: hb != null && Date.now() - hb < 15000, lastSeen: hb },
+    agent: { listening: agentMode === "standing-by", mode: agentMode, lastSeen: hb },
     manifestError,
     empty: manifest.sections.length === 0,
   };
@@ -284,6 +289,19 @@ function applyOp(body) {
     if (!(take >= 0 && take < m.sections[i].takes.length)) return { error: "no such take" };
     m.sections[i].active = take;
     commitOp(before, m, "pick", `${body.slug} showing take ${take + 1}`);
+    return { ok: true };
+  }
+  if (op === "discard") {
+    // Drop a take from the pager. The file stays on disk (immutable history;
+    // the journal snapshot can restore it via undo), only the manifest forgets.
+    const sec = m.sections[i];
+    const take = Number(body.take);
+    if (!(take >= 0 && take < sec.takes.length)) return { error: "no such take" };
+    if (sec.takes.length < 2) return { error: "cannot discard the last take" };
+    sec.takes.splice(take, 1);
+    if (sec.active >= sec.takes.length) sec.active = sec.takes.length - 1;
+    else if (sec.active > take) sec.active -= 1;
+    commitOp(before, m, "discard", `discarded a take of ${body.slug}`);
     return { ok: true };
   }
   return { error: `unknown op "${op}"` };
@@ -388,7 +406,9 @@ function detectAgentLanding() {
     if (undoStack.length > 60) undoStack.shift();
     redoStack = [];
     saveHistory();
-    appendJournal("agent", "landed", "the agent landed new work", m);
+    // Generic on purpose: in terminal mode the agent applies picks, moves,
+    // and new takes by editing the manifest directly.
+    appendJournal("agent", "landed", "the agent updated the page", m);
   } catch { /* torn write; next tick settles it */ }
 }
 
@@ -468,12 +488,44 @@ const server = http.createServer(async (req, res) => {
       if (p.startsWith("/frame/")) {
         const slug = decodeURIComponent(p.slice(7));
         const m = readManifest();
+        const i = m.sections.findIndex((x) => x.slug === slug);
+        if (i === -1) return send(res, 404, "no such section");
+        const s = m.sections[i];
+        const takeParam = url.searchParams.get("take");
+        const takeIdx = takeParam != null && Number(takeParam) >= 0 && Number(takeParam) < s.takes.length ? Number(takeParam) : s.active;
+        const f = s.takes[takeIdx] ?? s.takes[0];
+        const markup = f ? readSafe(takePath(slug, f)) ?? "" : "";
+        // ?ctx=1 renders the take between its real neighbors, dimmed.
+        let ctx = null;
+        if (url.searchParams.get("ctx") === "1") {
+          const readActive = (sec) => {
+            const file = sec.takes[sec.active] ?? sec.takes[0];
+            return file ? readSafe(takePath(sec.slug, file)) ?? "" : "";
+          };
+          const prev = m.sections[i - 1];
+          const next = m.sections[i + 1];
+          ctx = {
+            before: prev ? readActive(prev) : null,
+            beforeSlug: prev?.slug,
+            after: next ? readActive(next) : null,
+            afterSlug: next?.slug,
+          };
+        }
+        const doc = buildFrameDoc(readSafe(HEAD) ?? "", m.bodyAttrs ?? "", markup, slug, ctx);
+        return send(res, 200, doc, { "Content-Type": MIME[".html"], "Content-Security-Policy": FRAME_CSP });
+      }
+      if (p.startsWith("/compare/")) {
+        const slug = decodeURIComponent(p.slice(9));
+        const m = readManifest();
         const s = m.sections.find((x) => x.slug === slug);
         if (!s) return send(res, 404, "no such section");
-        const f = s.takes[s.active] ?? s.takes[0];
-        const markup = f ? readSafe(takePath(slug, f)) ?? "" : "";
-        const doc = buildFrameDoc(readSafe(HEAD) ?? "", m.bodyAttrs ?? "", markup, slug);
-        return send(res, 200, doc, { "Content-Type": MIME[".html"], "Content-Security-Policy": FRAME_CSP });
+        const takes = s.takes.map((file, idx) => ({
+          label: file.replace(/\.html$/, ""),
+          src: `/frame/${encodeURIComponent(slug)}?take=${idx}&ctx=1`,
+          active: idx === s.active,
+        }));
+        const page = buildComparePage({ title: m.title ?? "", slug, takes, live: true });
+        return send(res, 200, page, { "Content-Type": MIME[".html"] });
       }
       if (p === "/page") {
         const m = readManifest();

@@ -64,6 +64,42 @@ outside any section fold into the LAST section's take inside its guarded
 `<script>`. A page without `data-rb` tags becomes one `page` section; offer
 to split it into real sections as a follow-up. Recast exports import cleanly.
 
+## Design rounds (the convergence loop)
+
+This is how a page gets designed WITH the user instead of at them. A round is
+one design question, and the question is asked with takes, not words: you put
+rendered options in front of the user and they answer in the terminal. One
+question per round; asking several at once is bewildering.
+
+1. **Pick the question.** Round one is always the overall direction (usually
+   the hero). Later rounds zoom one level per verdict: overall direction,
+   then section by section, then components within a section. Never reopen a
+   frozen level unless the user does.
+2. **Draft 5 takes for exploration rounds** (2 or 3 for late fine-tuning).
+   They must be STRUCTURALLY different: different layout, different
+   information hierarchy, different primary affordance, not just different
+   colors. Five slightly tweaked card grids is wallpaper, not a round. Before
+   presenting, compare your takes; if two came out alike, redraw one with an
+   explicit constraint ("no card grid", "no split layout").
+3. **Show them.** Open the compare view: `/compare/<slug>` when the studio is
+   running, else `node <skill>/scripts/compare.mjs --ws <ws> --slug <slug>`
+   and open the printed file. The user flips with arrow keys; takes render
+   between their real neighbors so nothing is judged in a vacuum.
+4. **Ask ONE question, with your recommendation.** Name what each take is
+   trying ("1 is a split manifesto, 2 is centered and quiet, 3 leads with the
+   product shot...") and say which you would keep and why. Facts you can look
+   up yourself; the decision is the user's. Do not proceed without it.
+5. **Apply the verdict.** The best feedback is compositional: "2's layout
+   with 4's stat strip" IS the design, so draw that merged take next and make
+   it active. A plain pick means set it active and move on.
+6. **Log and prune.** Append the round to `site/DECISIONS.md` (question,
+   takes offered, verdict, why). Discard the rejected takes (edit the
+   manifest, or the user clicks discard) unless the user wants them kept.
+   Then zoom in: next round, one level deeper.
+
+`site/DECISIONS.md` is the design tree's memory. Read it at session start;
+without it, a fresh session re-litigates settled decisions.
+
 ## Variate
 
 Draw a genuinely DIFFERENT take on the same section. Same brand, same content

@@ -211,8 +211,9 @@ header.bar .right { margin-left: auto; display: flex; align-items: center; gap: 
 .tok-field input:focus, .tok-color input:focus { border-color: var(--accent); }
 
 .presence { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--fg-dim); }
-.presence .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line-2); }
+.presence .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line-2); flex: none; }
 .presence.on .dot { background: var(--green); }
+.presence.mid .dot { background: var(--accent); }
 .presence code { background: var(--ink-2); border-radius: 6px; padding: 2px 7px; font-size: 10px; display: block; margin-top: 6px; word-break: break-all; color: var(--fg-mut); }
 
 /* toast ------------------------------------------------------------------------ */

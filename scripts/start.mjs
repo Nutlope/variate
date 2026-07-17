@@ -25,12 +25,16 @@ const PORT = Number(args.port ?? 4177);
 const SERVER_JSON = path.join(WS, "state", "server.json");
 
 // ---- workspace skeleton -----------------------------------------------------
-for (const d of ["site/sections", "requests/done", "state", "sketches", "dist"]) {
+for (const d of ["site/sections", "requests/done", "state", "sketches", "assets", "dist"]) {
   fs.mkdirSync(path.join(WS, d), { recursive: true });
 }
 const manifestPath = path.join(WS, "site", "manifest.json");
 if (!fs.existsSync(manifestPath)) {
   fs.writeFileSync(manifestPath, JSON.stringify({ version: 1, rev: 0, title: "", bodyAttrs: "", sections: [] }, null, 2) + "\n");
+}
+const decisionsPath = path.join(WS, "site", "DECISIONS.md");
+if (!fs.existsSync(decisionsPath)) {
+  fs.writeFileSync(decisionsPath, "# Design decisions\n\nAppend-only log of design rounds: the question asked, the takes offered, the user's verdict, and why. Read this at session start; the design tree lives here.\n");
 }
 const headPath = path.join(WS, "site", "head.html");
 if (!fs.existsSync(headPath)) {
@@ -99,10 +103,12 @@ if (!args.noOpen && process.platform === "darwin") {
   try { spawn("open", [url], { detached: true, stdio: "ignore" }).unref(); } catch { /* ignore */ }
 }
 
-console.log(`STUDIO   ${url}   (open this in a browser; it live-updates)`);
+console.log(`STUDIO   ${url}   (open this in a browser; it live-updates as files change)`);
 console.log(`WORKSPACE ${WS}`);
 console.log(empty
-  ? `PAGE     empty. Bootstrap first: read references/recipes.md (Bootstrap), write site/head.html + first sections + manifest.`
-  : `PAGE     ${manifest.sections.length} sections: ${manifest.sections.map((s) => s.slug).join(", ")}`);
-console.log(`NEXT     node ${path.join(HERE, "await.mjs")} --ws ${WS}`);
-console.log(`LOOP     await blocks for the user's next studio action, prints it as JSON, exits. Fulfill it, then re-run await with --ack <id> --note "...". Exit 2 = idle, just re-run. Type "done" arrives as a request.`);
+  ? `PAGE     empty. Bootstrap first: read references/recipes.md (Bootstrap), write site/head.html + first sections + manifest. Read site/DECISIONS.md too.`
+  : `PAGE     ${manifest.sections.length} sections: ${manifest.sections.map((s) => s.slug).join(", ")}. Read site/DECISIONS.md for the design tree so far.`);
+console.log(`MODE     terminal-first: talk with the user, edit the workspace files directly, and between turns fold in studio clicks with:`);
+console.log(`DRAIN    node ${path.join(HERE, "await.mjs")} --ws ${WS} --drain   (prints queued studio requests as a JSON array; exit 2 = none; never blocks)`);
+console.log(`STUDIO-MODE  only if the user says they want to click instead of talk: node ${path.join(HERE, "await.mjs")} --ws ${WS}   (blocks for one request; ack with --ack <id> --note "...")`);
+console.log(`COMPARE  node ${path.join(HERE, "compare.mjs")} --ws ${WS} --slug <section>   writes a static side-by-side picker page for a design round.`);

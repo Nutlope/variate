@@ -1,28 +1,29 @@
 ---
 name: variate
 description: >
-  Section-by-section landing page studio with a live local preview the user
-  directs visually. Use when the user wants to build, design, or iterate a
-  landing page, marketing site, or homepage interactively: they click a
-  section to request variations (multiple takes), prompt-edits, new sections
-  between sections, or sketch-driven layouts, and you fulfill each request by
-  writing section files. Starts a local server; ends with a polished
-  single-file export. Also fits "open the variate studio" or continuing work
-  on an existing variate workspace.
+  Design landing pages with the user through rounds of concrete variants: you
+  draft structurally different takes of each section, the user compares them
+  in a live local preview and answers in the terminal, and the page converges
+  section by section. Use when the user wants to build, design, or iterate a
+  landing page, marketing site, or homepage; when they ask for design
+  variations or prototypes to choose between; or to continue an existing
+  variate workspace ("open the variate studio"). Starts a local server; ends
+  with a polished, shippable export.
 license: MIT
 compatibility: Requires Node.js 18+ and a local web browser. macOS/Linux first.
 metadata:
-  version: "1.0.0"
+  version: "2.0.0"
   author: youssef
 ---
 
 # variate
 
-You build a landing page one section at a time while the user art-directs from
-a live browser studio. You are the designer and the model: every request the
-studio sends, you fulfill by writing HTML section files. Read
-`references/recipes.md` before your first generative request each session; it
-carries the full craft contract.
+You design a page WITH the user: rounds of takes they compare and pick from,
+converging one decision at a time. You are the designer and the model; the
+studio and compare pages only render options. The user's verdicts arrive as
+terminal sentences, and those verdicts are the design. Read
+`references/recipes.md` before your first generative work each session, and
+read `site/DECISIONS.md` so you never re-litigate a settled round.
 
 ## The workspace (created by start.mjs, default `./variate`)
 
@@ -34,10 +35,12 @@ site/manifest.json          {version, rev, title, bodyAttrs, sections:
                             [{slug, takes:["take-1.html", ...], active}]}
 site/sections/<slug>/       take files. IMMUTABLE: never edit or delete a
                             take; always add take-<N+1>.html (N = highest).
-requests/ requests/done/    the queue. NEVER touch these files yourself;
-                            await.mjs is the only interface.
-sketches/                   PNG + blueprint payloads for sketch requests.
-dist/index.html             the assembled export.
+site/DECISIONS.md           append-only design-round log: question, takes,
+                            verdict, why. Read at session start.
+requests/ requests/done/    the studio click queue. NEVER touch these files
+                            yourself; await.mjs is the only interface.
+sketches/ assets/           sketch payloads; the user's images.
+dist/                       the assembled export.
 ```
 
 ## Start
@@ -49,35 +52,47 @@ node <this-skill-dir>/scripts/start.mjs --ws <project>/variate
 It prints the studio URL (tell the user; if your harness has a browser
 preview pane, open it there too) and whether the page is empty. Empty page:
 read the Bootstrap recipe and write `head.html`, a nav, a hero, and one or
-two more sections from the user's brief before entering the loop.
+two more sections from the user's brief. Then run the first design round.
 
-## The loop
+## Terminal mode (the default)
 
-1. `node <skill>/scripts/await.mjs --ws <ws>` blocks until the user acts in
-   the studio, prints ONE request as JSON, and exits 0.
-2. Re-read `site/manifest.json` (it may have changed: the user moves, cuts,
-   and swaps takes without you). Open the recipe for the request type.
-   Fulfill it by writing `site/sections/<slug>/take-<N+1>.html` files and
-   updating the manifest (bump `rev`). The studio hot-reloads as you write.
-3. Loop, folding the ack in:
-   `node <skill>/scripts/await.mjs --ws <ws> --ack <id> --note "<one line for the user's activity feed>"`
-   (`--result skipped` if the target was cut before you got to it; `failed`
-   only when you could not fulfill at all.)
-4. Exit 2 = idle: nothing queued. Re-run the same command. After three
-   consecutive idles, ask the user whether to keep the studio open.
-5. `"type":"done"` = the user finished: ack it, verify `dist/index.html`
-   exists (the server exports eagerly), tell the user where it is, stop.
-6. `"redelivered": true` = a previous claim was interrupted. Check whether
-   your takes already landed (read the section dir + manifest); if so, ack
-   with `--note "already landed"` instead of writing duplicates.
+The conversation drives; nothing blocks. Work like this:
 
-Timeouts: Claude Code MAY run await with a long shell timeout (10 minutes)
-plus `--timeout 540` to cut round trips. Codex and other CLIs: keep the
-default `--timeout 90` and simply re-run on idle; the server keeps running
-between your turns. Never background await (its exit IS your signal), and
-never pipe input to it.
+1. **Act on what the user says**: draft takes, edit sections, apply verdicts.
+   You edit workspace files directly, including the manifest for picks,
+   moves, cuts, and discards the user asks for in chat (bump `rev`; the
+   studio hot-reloads and journals your changes as you write).
+2. **Run design rounds** for anything worth a decision: takes first, then one
+   question. The full loop is the "Design rounds" recipe; its compare views
+   (`/compare/<slug>` live, or `scripts/compare.mjs` for a static file) are
+   how the user flips between takes.
+3. **Fold in studio clicks between turns**:
+   `node <skill>/scripts/await.mjs --ws <ws> --drain`
+   prints every queued studio request as ONE JSON array and exits (2 = none).
+   Fulfill each (recipes per type below), then ack each:
+   `... --drain --ack <id> --note "<one line for the user's activity feed>"`.
+   Run a drain whenever you finish a turn's work or the user mentions
+   clicking something. Never sit blocked while the user is talking.
 
-## Request types
+## Studio mode (opt-in)
+
+If the user says they want to click instead of talk ("I'll drive from the
+studio"), switch to the blocking loop:
+
+1. `node <skill>/scripts/await.mjs --ws <ws>` blocks until a studio action,
+   prints ONE request, exits 0. Fulfill it, then loop with the ack folded in:
+   `... --ack <id> --note "..."`. Exit 2 = idle; just re-run. After three
+   consecutive idles, ask the user whether to keep waiting.
+2. Claude Code MAY use a long shell timeout (10 minutes) with `--timeout 540`
+   to cut round trips; other CLIs keep `--timeout 90`. Never background
+   await (its exit IS your signal), never pipe input to it.
+
+Either mode: `"type":"done"` means the user finished. Ack it, verify
+`dist/index.html` (the server exports eagerly), tell them where it is, stop.
+`"redelivered": true` means a claim was interrupted earlier: check whether
+your takes already landed before writing duplicates; if they did, just ack.
+
+## Request types (studio clicks and their recipes)
 
 | type     | target        | fulfill by                                                      | recipe    |
 |----------|---------------|------------------------------------------------------------------|-----------|
@@ -96,8 +111,9 @@ Every take file is EXACTLY ONE `<section data-rb="<slug>">` element:
 2. The page's global CSS (head.html) already styles it: REUSE the custom
    properties, type scale, spacing rhythm, and button classes.
 3. New styles: ONE `<style>` inside the section; every new class name starts
-   with `v<request-id>-` (e.g. `v0007-grid`). Never touch `:root`, never
-   restyle global tags or existing classes.
+   with `v<request-id>-` (e.g. `v0007-grid`) or, for takes you draft in
+   terminal mode, `vt<take-number>-`. Never touch `:root`, never restyle
+   global tags or existing classes.
 4. Zero external requests: no CDN, no web fonts, no remote anything.
 5. No `<img>`: draw every visual as inline SVG or CSS.
 6. At most ONE `<script>` inside the section, guarded so it never throws.
@@ -107,27 +123,26 @@ Every take file is EXACTLY ONE `<section data-rb="<slug>">` element:
 
 ## What the user can do without you (no request reaches the agent)
 
-The studio also has deterministic, instant tools the user drives directly.
-They never queue a request, but they DO change the files you build on, so
-always re-read fresh state before writing:
+The studio has deterministic, instant tools the user drives directly. They
+never queue a request, but they DO change the files you build on, so always
+re-read fresh state before writing:
 
-- **Move / cut / pick a take / undo / redo** — manifest edits, applied by the
-  server.
-- **Design tokens** — a live editor over your `head.html` `:root` values.
-  The user can recolor or re-space the whole page in seconds; the server
-  rewrites `head.html`. So `head.html` may differ from what you last wrote:
-  re-read it before a polish or any head edit.
-- **Inline text edits** — the user can click text in a section and retype it;
-  the server saves the result as a new take of that section. So a section may
-  gain takes you did not draw.
+- **Move / cut / pick a take / discard a take / undo / redo** - manifest
+  edits, applied by the server.
+- **Design tokens** - a live editor over your `head.html` `:root` values.
+  `head.html` may differ from what you last wrote: re-read it before a
+  polish or any head edit.
+- **Inline text edits** - clicking text and retyping saves a new take, so a
+  section may gain takes you did not draw.
 
 ## Rules of the road
 
 - Take files are immutable history; the user flips between them. Only add.
-- Re-read the manifest AND `head.html` before every write; never trust a stale
-  outline or an old design system (the user may have retuned tokens).
+- Re-read the manifest AND `head.html` before every write; never trust a
+  stale outline or an old design system.
 - Only `head.html` may be edited in place, and only during bootstrap/polish;
-  mention any head change in your ack note (undo cannot restore it).
+  mention any head change in your notes (undo cannot restore it).
+- Log every design-round verdict in `site/DECISIONS.md`; read it at start.
 - Suggest a git commit of the workspace at good checkpoints.
 - The user sees your `--note` lines in their activity feed: write them for a
   human, one short line each.

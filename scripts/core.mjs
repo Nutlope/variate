@@ -111,8 +111,106 @@ export function normalizeTake(markup, slug) {
   return `<section data-rb="${slug}">${trimmed}</section>`;
 }
 
-export function buildFrameDoc(head, bodyAttrs, markup, slug) {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${REVEAL_CSS}${head}</head><body ${bodyAttrs}>${IO_SHIM}${normalizeTake(markup, slug)}${BRIDGE}${reporterFor(slug)}</body></html>`;
+export function buildFrameDoc(head, bodyAttrs, markup, slug, ctx = null) {
+  // ctx = { before, beforeSlug, after, afterSlug }: render the take BETWEEN
+  // its real neighbors (dimmed, inert) so it is judged in context, never in a
+  // vacuum. Used by the compare views.
+  const dim = (m, s) => (m ? `<div style="opacity:.38;pointer-events:none;user-select:none" aria-hidden="true">${normalizeTake(m, s)}</div>` : "");
+  const body = ctx
+    ? `${dim(ctx.before, ctx.beforeSlug ?? "before")}${normalizeTake(markup, slug)}${dim(ctx.after, ctx.afterSlug ?? "after")}`
+    : normalizeTake(markup, slug);
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${REVEAL_CSS}${head}</head><body ${bodyAttrs}>${IO_SHIM}${body}${BRIDGE}${reporterFor(slug)}</body></html>`;
+}
+
+/**
+ * The compare host page: every take of one section, one visible at a time,
+ * with a sticky bottom-center picker (buttons, keys 1-9 and arrow keys; keys
+ * are ignored while an input is focused). `live` wires keep/discard buttons
+ * to the studio API; the static variant (compare.mjs) inlines take docs as
+ * srcdoc and swaps the buttons for a "tell your agent" hint.
+ *
+ * takes: [{ label, src?, doc?, active?: boolean }]
+ */
+export function buildComparePage({ title, slug, takes, live }) {
+  const frames = takes.map((t, i) => {
+    const attr = t.src ? `src="${escapeAttr(t.src)}"` : `srcdoc="${escapeAttr(t.doc ?? "")}"`;
+    return `<iframe id="f${i}" title="${escapeAttr(t.label)}" sandbox="allow-scripts" ${attr} loading="eager"></iframe>`;
+  }).join("\n");
+  const names = JSON.stringify(takes.map((t) => t.label));
+  const activeIdx = Math.max(0, takes.findIndex((t) => t.active));
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>compare · ${escapeAttr(slug)} · ${escapeAttr(title || "variate")}</title>
+<style>
+  :root{--ink:#faf8f3;--surface:#fffdf9;--line:#e6e0d2;--fg:#191611;--fg-mut:#5d564a;--fg-dim:#9a9284;--accent:#3a33e0;--mono:ui-monospace,"SF Mono",Menlo,monospace}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--ink);font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;color:var(--fg)}
+  header{display:flex;align-items:center;gap:10px;padding:14px 20px}
+  header .dot{width:10px;height:10px;border-radius:3px;background:var(--accent)}
+  header b{font-size:15px}
+  header span{font-family:var(--mono);font-size:11px;color:var(--fg-dim)}
+  main{padding:0 20px 110px;max-width:1440px;margin:0 auto}
+  iframe{display:none;width:100%;height:78vh;border:1px solid var(--line);border-radius:12px;background:#fff}
+  iframe.on{display:block}
+  .picker{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:rgba(25,22,17,.92);backdrop-filter:blur(6px);border-radius:999px;padding:8px 10px;box-shadow:0 14px 40px -14px rgba(0,0,0,.5);max-width:94vw;flex-wrap:wrap;justify-content:center}
+  .picker button{font:inherit;border:0;background:none;color:#d9d4ca;font-family:var(--mono);font-size:12px;padding:6px 11px;border-radius:999px;cursor:pointer;white-space:nowrap}
+  .picker button:hover{background:rgba(255,255,255,.12)}
+  .picker button.on{background:var(--accent);color:#fff}
+  .picker .act{background:rgba(255,255,255,.1);color:#fff;font-weight:600}
+  .picker .act:hover{background:rgba(255,255,255,.2)}
+  .picker .keep.on-active{background:#0a7d55;color:#fff}
+  .hint{position:fixed;left:50%;bottom:74px;transform:translateX(-50%);font-family:var(--mono);font-size:10.5px;color:var(--fg-dim);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px 12px;white-space:nowrap;max-width:94vw;overflow:hidden;text-overflow:ellipsis}
+</style>
+</head>
+<body>
+<header><span class="dot"></span><b>${escapeAttr(slug)}</b><span>${takes.length} take${takes.length === 1 ? "" : "s"} · arrows or 1-${Math.min(9, takes.length)} to flip</span></header>
+<main>
+${frames}
+</main>
+<p class="hint">${live ? "keep = make this the live take · discard = drop it from the pager" : "tell your agent: keep 2, fold 4's stat strip in, drop the rest"}</p>
+<div class="picker" id="picker"></div>
+<script>
+(function(){
+  var names=${names},cur=${activeIdx},live=${live ? "true" : "false"},slug=${JSON.stringify(slug)};
+  var picker=document.getElementById("picker");
+  function show(i){
+    cur=(i%names.length+names.length)%names.length;
+    for(var k=0;k<names.length;k++){document.getElementById("f"+k).classList.toggle("on",k===cur);}
+    render();
+  }
+  function render(){
+    var h='<button data-go="-1" aria-label="previous">&#8249;</button>';
+    for(var i=0;i<names.length;i++){h+='<button data-i="'+i+'" class="'+(i===cur?"on":"")+'">'+(i+1)+" · "+names[i]+"</button>";}
+    h+='<button data-go="1" aria-label="next">&#8250;</button>';
+    if(live){h+='<button class="act keep" data-keep="1">keep this</button><button class="act" data-discard="1">discard</button>';}
+    picker.innerHTML=h;
+  }
+  picker.addEventListener("click",function(e){
+    var b=e.target.closest("button");if(!b)return;
+    if(b.dataset.i!=null)show(+b.dataset.i);
+    else if(b.dataset.go)show(cur+ +b.dataset.go);
+    else if(b.dataset.keep)api("pick",{take:cur});
+    else if(b.dataset.discard){if(names.length<2)return;api("discard",{take:cur});}
+  });
+  function api(op,extra){
+    fetch("/api/op",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({op:op,slug:slug},extra))})
+      .then(function(r){return r.json();}).then(function(){location.reload();}).catch(function(){});
+  }
+  document.addEventListener("keydown",function(e){
+    var el=document.activeElement;
+    if(el&&(el.tagName==="INPUT"||el.tagName==="TEXTAREA"||el.isContentEditable))return;
+    if(e.key==="ArrowLeft")show(cur-1);
+    else if(e.key==="ArrowRight")show(cur+1);
+    else{var n=parseInt(e.key,10);if(n>=1&&n<=Math.min(9,names.length))show(n-1);}
+  });
+  show(cur);
+})();
+</script>
+</body>
+</html>`;
 }
 
 export function assemblePage(head, bodyAttrs, markups) {
