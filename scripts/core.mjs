@@ -119,7 +119,8 @@ export function buildFrameDoc(head, bodyAttrs, markup, slug, ctx = null) {
   const body = ctx
     ? `${dim(ctx.before, ctx.beforeSlug ?? "before")}${normalizeTake(markup, slug)}${dim(ctx.after, ctx.afterSlug ?? "after")}`
     : normalizeTake(markup, slug);
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${REVEAL_CSS}${head}</head><body ${bodyAttrs}>${IO_SHIM}${body}${BRIDGE}${reporterFor(slug)}</body></html>`;
+  // Frames are served from /frame/*, so relative assets/ refs must go absolute.
+  return rewriteAssetPaths(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${REVEAL_CSS}${head}</head><body ${bodyAttrs}>${IO_SHIM}${body}${BRIDGE}${reporterFor(slug)}</body></html>`);
 }
 
 /**
@@ -225,19 +226,52 @@ ${markups.join("\n")}
 </html>`;
 }
 
-/** Loud, never blocking: contract violations in a landed take. */
-export function validateTake(markup) {
+/** Every asset path a fragment references: src/srcset/href/url() under assets/. */
+export function assetRefs(markup) {
+  const out = new Set();
+  for (const m of markup.matchAll(/(?:src|href)=["'](?:\/)?(assets\/[^"']+)["']/gi)) out.add(m[1]);
+  for (const m of markup.matchAll(/url\(\s*["']?(?:\/)?(assets\/[^"')]+)["']?\s*\)/gi)) out.add(m[1]);
+  return [...out];
+}
+
+/** Serve-time rewrite so relative assets/ paths resolve from /frame/* docs.
+ *  Export skips this: dist/assets/ sits next to the pages, relative works. */
+export function rewriteAssetPaths(html) {
+  return html
+    .replace(/((?:src|href)=["'])assets\//gi, "$1/assets/")
+    .replace(/(url\(\s*["']?)assets\//gi, "$1/assets/");
+}
+
+/** Loud, never blocking: contract violations in a landed take.
+ *  assetsDir (optional) lets missing local images be flagged too. */
+export function validateTake(markup, assetsDir = null) {
   const warnings = [];
-  if (/<img\b/i.test(markup)) warnings.push("uses <img> (visuals must be inline SVG/CSS)");
+  for (const m of markup.matchAll(/<img\b[^>]*>/gi)) {
+    const tag = m[0];
+    const src = tag.match(/src=["']([^"']*)["']/i)?.[1] ?? "";
+    if (/^https?:\/\//i.test(src)) continue; // caught by the external check below
+    if (!/^\/?assets\//.test(src)) warnings.push("an <img> src is outside assets/ (local images live in assets/, drawn art is inline SVG)");
+    if (!/alt=["']/.test(tag)) warnings.push("an <img> is missing alt text");
+  }
   if (/(src|href)=["']https?:\/\//i.test(markup)) warnings.push("references an external URL");
   if (/@import|url\(\s*["']?https?:/i.test(markup)) warnings.push("styles pull an external resource");
+  if (assetsDir) {
+    for (const ref of assetRefs(markup)) {
+      const p = path.normalize(path.join(assetsDir, ref.replace(/^assets\//, "")));
+      if (p.startsWith(path.normalize(assetsDir)) && !fs.existsSync(p)) warnings.push(`references a missing asset (${ref})`);
+    }
+  }
   const open = (markup.match(/<section\b/gi) || []).length;
   const close = (markup.match(/<\/section>/gi) || []).length;
   if (open !== close) warnings.push("unbalanced <section> tags");
   return warnings;
 }
 
-export const FRAME_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;";
+// 'self' lets frames load the workspace's own /assets/* images; everything
+// remote stays blocked.
+export const FRAME_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: 'self';";
+
+export const ASSET_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".ico", ".avif"]);
 
 // ---------------------------------------------------------------------------
 // ship pack (ported from Recast lib/ship.ts, minus analytics and signup

@@ -15,8 +15,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  sha8, nowIso, readSafe, atomicWrite, readJsonSafe, statMtime, wsPaths,
-  buildFrameDoc, buildComparePage, assemblePage, normalizeTake, validateTake, FRAME_CSP,
+  sha8, nowIso, readSafe, atomicWrite, readJsonSafe, statMtime, wsPaths, normalizeSlug,
+  buildFrameDoc, buildComparePage, assemblePage, normalizeTake, validateTake,
+  rewriteAssetPaths, finalizeShipPack, FRAME_CSP, ASSET_EXTS,
 } from "./core.mjs";
 
 // ---------------------------------------------------------------------------
@@ -24,13 +25,13 @@ import {
 
 const args = parseArgs(process.argv.slice(2));
 const P = wsPaths(args.ws ?? "./variate");
-const { WS, SITE, SECTIONS, REQ, REQ_DONE, STATE_DIR, SKETCHES, DIST, MANIFEST, HEAD, JOURNAL, HEARTBEAT, SERVER_JSON, HISTORY } = P;
+const { WS, SITE, SECTIONS, REQ, REQ_DONE, STATE_DIR, SKETCHES, ASSETS, DIST, MANIFEST, HEAD, JOURNAL, HEARTBEAT, SERVER_JSON, HISTORY } = P;
 const PORT_WANTED = Number(args.port ?? 4177);
 const FORCE_POLL = !!args.poll;
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui");
 
-for (const d of [SITE, SECTIONS, REQ, REQ_DONE, STATE_DIR, SKETCHES, DIST]) fs.mkdirSync(d, { recursive: true });
+for (const d of [SITE, SECTIONS, REQ, REQ_DONE, STATE_DIR, SKETCHES, ASSETS, DIST]) fs.mkdirSync(d, { recursive: true });
 
 function parseArgs(argv) {
   const out = {};
@@ -209,7 +210,7 @@ function computeState() {
     const activeFile = s.takes[s.active] ?? s.takes[0];
     const markup = activeFile ? readSafe(takePath(s.slug, activeFile)) ?? "" : "";
     const busyReq = polishBusy ?? working.find((w) => w.slug === s.slug);
-    const warnings = markup ? validateTake(markup) : [];
+    const warnings = markup ? validateTake(markup, ASSETS) : [];
     return {
       slug: s.slug,
       takes: s.takes.length,
@@ -328,9 +329,20 @@ function writeExport() {
       return f ? normalizeTake(readSafe(takePath(s.slug, f)) ?? "", s.slug) : "";
     })
     .filter(Boolean);
-  const html = assemblePage(head, m.bodyAttrs ?? "", markups);
+  // Ship pack: meta description, OG tags, and a favicon derived from the
+  // page's own copy and logo mark. Relative assets/ paths stay relative:
+  // dist/assets/ sits next to the page.
+  const html = finalizeShipPack(assemblePage(head, m.bodyAttrs ?? "", markups));
   atomicWrite(path.join(DIST, "index.html"), html);
-  appendJournal("server", "export", "assembled dist/index.html", null);
+  let shippedAssets = 0;
+  try {
+    for (const f of fs.readdirSync(ASSETS)) {
+      fs.mkdirSync(path.join(DIST, "assets"), { recursive: true });
+      fs.copyFileSync(path.join(ASSETS, f), path.join(DIST, "assets", f));
+      shippedAssets++;
+    }
+  } catch { /* no assets dir yet */ }
+  appendJournal("server", "export", `assembled dist/index.html, ship-ready${shippedAssets ? `, ${shippedAssets} asset${shippedAssets === 1 ? "" : "s"}` : ""}`, null);
   return path.join(DIST, "index.html");
 }
 
@@ -534,7 +546,9 @@ const server = http.createServer(async (req, res) => {
           const f = s.takes[s.active] ?? s.takes[0];
           return f ? normalizeTake(readSafe(takePath(s.slug, f)) ?? "", s.slug) : "";
         }).filter(Boolean);
-        return send(res, 200, assemblePage(head, m.bodyAttrs ?? "", markups), { "Content-Type": MIME[".html"], "Content-Security-Policy": FRAME_CSP });
+        // Served from /page, so relative assets/ refs must go absolute.
+        const html = rewriteAssetPaths(assemblePage(head, m.bodyAttrs ?? "", markups));
+        return send(res, 200, html, { "Content-Type": MIME[".html"], "Content-Security-Policy": FRAME_CSP });
       }
       if (p.startsWith("/sketches/")) {
         const f = path.normalize(path.join(SKETCHES, p.slice(10)));
@@ -542,6 +556,15 @@ const server = http.createServer(async (req, res) => {
         const body = fs.existsSync(f) ? fs.readFileSync(f) : null;
         if (!body) return send(res, 404, "not found");
         return send(res, 200, body, { "Content-Type": MIME[".png"] });
+      }
+      if (p.startsWith("/assets/")) {
+        const f = path.normalize(path.join(ASSETS, decodeURIComponent(p.slice(8))));
+        if (!f.startsWith(ASSETS)) return send(res, 403, "no");
+        const body = fs.existsSync(f) ? fs.readFileSync(f) : null;
+        if (!body) return send(res, 404, "not found");
+        const ext = path.extname(f).toLowerCase();
+        const type = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml", ".gif": "image/gif", ".ico": "image/x-icon", ".avif": "image/avif" }[ext] ?? "application/octet-stream";
+        return send(res, 200, body, { "Content-Type": type, "Cache-Control": "no-cache" });
       }
       return send(res, 404, "not found");
     }
@@ -601,6 +624,24 @@ const server = http.createServer(async (req, res) => {
         const out = writeTextTake(body.slug, body.markup);
         broadcast();
         return sendJson(res, out.error ? 400 : 200, out);
+      }
+      if (p === "/api/asset") {
+        // {name, base64}: an image dropped on the studio. Slugified name,
+        // extension whitelist, 8MB cap, collision gets a -2 suffix.
+        const rawName = String(body?.name ?? "");
+        const b64 = String(body?.base64 ?? "");
+        const ext = path.extname(rawName).toLowerCase();
+        if (!ASSET_EXTS.has(ext)) return sendJson(res, 400, { error: `only ${[...ASSET_EXTS].join(" ")} files` });
+        if (!b64) return sendJson(res, 400, { error: "empty file" });
+        const buf = Buffer.from(b64, "base64");
+        if (buf.length > 8_000_000) return sendJson(res, 400, { error: "over 8MB" });
+        const base = normalizeSlug(path.basename(rawName, ext)) || "asset";
+        let name = base + ext;
+        for (let n = 2; fs.existsSync(path.join(ASSETS, name)); n++) name = `${base}-${n}${ext}`;
+        fs.writeFileSync(path.join(ASSETS, name), buf);
+        appendJournal("user", "asset", `added assets/${name}`, null);
+        broadcast();
+        return sendJson(res, 200, { ok: true, path: `assets/${name}` });
       }
       return send(res, 404, "not found");
     }

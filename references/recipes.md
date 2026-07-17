@@ -15,10 +15,15 @@ new class name must start with `v<request-id>-` (the request's `id` field,
 e.g. `v0007-card`). Never restyle global tags, never redefine existing
 classes, never touch `:root`. JS only if the section truly needs it: ONE
 `<script>` inside the section, wrapped so it never throws even if the rest of
-the page is absent. Zero external requests. No `<img>` ever: compose every
-visual as inline SVG, CSS shapes, or gradients, art-directed rather than
-placeholder-shaped. Close every tag. Fully responsive from 360px to 1440px,
-semantic and accessible, honor `prefers-reduced-motion`.
+the page is absent. Zero external requests. Two kinds of visuals, never
+mixed up: REAL images (the user's photos, logos, product shots) are
+`<img src="assets/<file>" alt="...">` from the workspace `assets/` folder,
+always with honest alt text and width/height or aspect-ratio CSS so nothing
+jumps; DRAWN art (illustrations, mocks, charts, decorations) is composed
+inline as SVG, CSS shapes, or gradients, art-directed rather than
+placeholder-shaped. Never an external image URL, never an <img> standing in
+for something you could draw. Close every tag. Fully responsive from 360px
+to 1440px, semantic and accessible, honor `prefers-reduced-motion`.
 
 Style bar, always: no eyebrow labels (no small uppercase kicker line above a
 heading, no numbered tags like "02 / RESEARCH"), no italic display type, one
@@ -183,6 +188,20 @@ elements the sketch does not show, do not drop ones it does. Where a region
 carries a quoted note, use that content; where it is generic, fill it with
 the RIGHT content for this section from the page's real copy.
 `params.instruction` is a note the user added alongside. Land as a new take.
+
+## Assets (the user's real images)
+
+`<ws>/assets/` is the only home for real images. They arrive two ways: the
+user drops files onto the studio (saved automatically, path toasted and
+copied), or hands you a path in chat and you copy it in yourself:
+`cp ~/Desktop/logo.png <ws>/assets/logo.png` (lowercase-slug the name).
+Reference them as `src="assets/<file>"` exactly; the studio serves them live
+and export copies them to `dist/assets/` so the same relative path ships.
+Give every `<img>` real alt text and a stable box (width/height attributes
+or aspect-ratio CSS). Prefer the drawn-SVG route for anything decorative;
+reach for `<img>` only when the pixels themselves matter. If a take
+references an asset that does not exist, the studio flags it as a warning:
+fix the path or add the file before acking.
 
 ## Polish
 

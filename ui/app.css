@@ -52,7 +52,8 @@ header.bar .right { margin-left: auto; display: flex; align-items: center; gap: 
 .seg button.on { background: var(--ink-2); color: var(--fg); }
 
 /* the stack ---------------------------------------------------------------- */
-#stack { min-width: 0; }
+#stack { min-width: 0; border-radius: var(--radius); }
+#stack.dropping { outline: 2px dashed var(--accent); outline-offset: 6px; }
 .frame-wrap { position: relative; }
 .frame-box {
   position: relative;

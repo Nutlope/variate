@@ -115,7 +115,10 @@ Every take file is EXACTLY ONE `<section data-rb="<slug>">` element:
    terminal mode, `vt<take-number>-`. Never touch `:root`, never restyle
    global tags or existing classes.
 4. Zero external requests: no CDN, no web fonts, no remote anything.
-5. No `<img>`: draw every visual as inline SVG or CSS.
+5. Images: `<img src="assets/<file>" alt="...">` for REAL images the user
+   provided (photos, logos, screenshots; they live in `assets/`, dropped in
+   the studio or copied there for you). Drawn art stays inline SVG or CSS.
+   Never an external image URL, never a path outside assets/.
 6. At most ONE `<script>` inside the section, guarded so it never throws.
 7. Responsive 360-1440px; honor `prefers-reduced-motion`; real contrast.
 8. No eyebrow labels above headings, no italic display type, and whitespace

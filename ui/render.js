@@ -100,6 +100,32 @@ function scaffold() {
   window.addEventListener("message", onFrameMessage);
   window.addEventListener("resize", () => { for (const [, f] of frames) applyGeometry(f); });
   window.addEventListener("variate:cut", (e) => cutSection(e.detail.slug));
+
+  // Drop an image anywhere on the stack: it lands in assets/ and the path is
+  // copied so the user can hand it straight to the agent ("use assets/x.png").
+  stackEl.addEventListener("dragover", (e) => { e.preventDefault(); stackEl.classList.add("dropping"); });
+  stackEl.addEventListener("dragleave", (e) => { if (!stackEl.contains(e.relatedTarget)) stackEl.classList.remove("dropping"); });
+  stackEl.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    stackEl.classList.remove("dropping");
+    const files = [...(e.dataTransfer?.files ?? [])].filter((f) => /image\//.test(f.type) || /\.(png|jpe?g|webp|svg|gif|ico|avif)$/i.test(f.name));
+    if (!files.length) return;
+    for (const file of files) {
+      try {
+        const base64 = await new Promise((ok, bad) => {
+          const r = new FileReader();
+          r.onload = () => ok(String(r.result).split(",")[1]);
+          r.onerror = bad;
+          r.readAsDataURL(file);
+        });
+        const res = await fetch("/api/asset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: file.name, base64 }) });
+        const data = await res.json();
+        if (!res.ok) { toast(data.error ?? "upload failed"); continue; }
+        try { await navigator.clipboard.writeText(data.path); } catch { /* clipboard optional */ }
+        toast(`saved ${data.path} (path copied): tell your agent where to use it`);
+      } catch { toast(`could not read ${file.name}`); }
+    }
+  });
   // Click anywhere that is not a popover or a menu trigger closes menus.
   document.addEventListener("mousedown", (e) => {
     if (e.target.closest(".pop") || e.target.closest("[data-action='menu']") || e.target.closest("[data-action='insert']")) return;
