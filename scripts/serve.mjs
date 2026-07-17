@@ -13,30 +13,22 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import {
+  sha8, nowIso, readSafe, atomicWrite, readJsonSafe, statMtime, wsPaths,
+  buildFrameDoc, assemblePage, normalizeTake, validateTake, FRAME_CSP,
+} from "./core.mjs";
 
 // ---------------------------------------------------------------------------
 // args + paths
 
 const args = parseArgs(process.argv.slice(2));
-const WS = path.resolve(args.ws ?? "./variate");
+const P = wsPaths(args.ws ?? "./variate");
+const { WS, SITE, SECTIONS, REQ, REQ_DONE, STATE_DIR, SKETCHES, DIST, MANIFEST, HEAD, JOURNAL, HEARTBEAT, SERVER_JSON, HISTORY } = P;
 const PORT_WANTED = Number(args.port ?? 4177);
 const FORCE_POLL = !!args.poll;
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui");
-const SITE = path.join(WS, "site");
-const SECTIONS = path.join(SITE, "sections");
-const REQ = path.join(WS, "requests");
-const REQ_DONE = path.join(REQ, "done");
-const STATE_DIR = path.join(WS, "state");
-const SKETCHES = path.join(WS, "sketches");
-const DIST = path.join(WS, "dist");
-const MANIFEST = path.join(SITE, "manifest.json");
-const HEAD = path.join(SITE, "head.html");
-const JOURNAL = path.join(STATE_DIR, "journal.jsonl");
-const HEARTBEAT = path.join(STATE_DIR, "agent.heartbeat");
-const SERVER_JSON = path.join(STATE_DIR, "server.json");
 
 for (const d of [SITE, SECTIONS, REQ, REQ_DONE, STATE_DIR, SKETCHES, DIST]) fs.mkdirSync(d, { recursive: true });
 
@@ -48,35 +40,6 @@ function parseArgs(argv) {
     else if (a.startsWith("--")) out[a.slice(2)] = argv[++i];
   }
   return out;
-}
-
-// ---------------------------------------------------------------------------
-// small helpers
-
-const sha8 = (s) => crypto.createHash("sha1").update(s).digest("hex").slice(0, 8);
-const nowIso = () => new Date().toISOString();
-
-function readSafe(file) {
-  try { return fs.readFileSync(file, "utf8"); } catch { return null; }
-}
-
-function atomicWrite(file, content) {
-  const tmp = file + ".tmp-" + process.pid;
-  fs.writeFileSync(tmp, content);
-  fs.renameSync(tmp, file);
-}
-
-function readJsonSafe(file) {
-  const raw = readSafe(file);
-  if (raw == null) return { json: null, error: "missing" };
-  try { return { json: JSON.parse(raw), error: null }; }
-  catch {
-    // One brief retry: we may have caught a writer mid-rename.
-    try {
-      const again = fs.readFileSync(file, "utf8");
-      return { json: JSON.parse(again), error: null };
-    } catch (e2) { return { json: null, error: String(e2).slice(0, 120) }; }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -140,8 +103,6 @@ function loadJournalTail(n = 200) {
 // reconstructed from the journal: replaying past undo/redo entries as history
 // would make a post-restart undo walk back through the dance instead of
 // continuing the logical timeline. The journal stays the activity feed.
-const HISTORY = path.join(STATE_DIR, "history.json");
-
 function saveHistory() {
   try { atomicWrite(HISTORY, JSON.stringify({ undo: undoStack.slice(-60), redo: redoStack.slice(-60) })); } catch { /* ignore */ }
 }
@@ -152,77 +113,6 @@ function bootHistory() {
   const { json } = readJsonSafe(HISTORY);
   undoStack = Array.isArray(json?.undo) ? json.undo : [];
   redoStack = Array.isArray(json?.redo) ? json.redo : [];
-}
-
-// ---------------------------------------------------------------------------
-// frame + page assembly (the three injected strings are ported verbatim from
-// Recast lib/sections.ts; they are battle-tested, do not "improve" them)
-
-const REVEAL_CSS = `<style>[class*="reveal"],[class*="fade"],[data-reveal],[data-aos],[data-animate]{opacity:1!important;}</style>`;
-
-const IO_SHIM = `<script>(function(){try{window.IntersectionObserver=function(cb,o){o=o||{};return{root:o.root||null,rootMargin:o.rootMargin||'0px',thresholds:[].concat(o.threshold||0),observe:function(el){try{cb([{isIntersecting:true,intersectionRatio:1,target:el}],this);}catch(e){}},unobserve:function(){},disconnect:function(){},takeRecords:function(){return[];}};}catch(e){}function reveal(){try{var els=document.querySelectorAll('[class*="reveal"],[class*="fade"],[class*="animate"],[data-reveal],[data-aos],[data-animate]');for(var i=0;i<els.length;i++){var el=els[i];['in','visible','show','active','revealed','is-visible','in-view','aos-animate','animated'].forEach(function(c){el.classList.add(c);});el.style.opacity='1';el.style.visibility='visible';}}catch(e){}}window.addEventListener('load',reveal);[120,400,900].forEach(function(t){setTimeout(reveal,t);});})();</script>`;
-
-function reporterFor(slug) {
-  // One deliberate divergence from the Recast original: height is measured
-  // from BODY content, not documentElement. docEl.scrollHeight is clamped to
-  // the iframe viewport, so a short section could never report smaller than
-  // the iframe already was (sticky dead space below slim navs). Body content
-  // height still self-stabilizes for full-viewport (svh) heroes.
-  // Debounce via setTimeout, NOT requestAnimationFrame: hidden or embedded
-  // pages throttle rAF to zero, which wedged the whole reporter (sched stuck
-  // true, no report ever posted). Timers keep firing everywhere.
-  return `<script>(function(){var S=${JSON.stringify(slug)},last=-1,sched=false;function H(){var b=document.body;if(!b)return Math.max(document.documentElement.scrollHeight,1);var h=b.scrollHeight;var kids=b.children;for(var i=0;i<kids.length;i++){try{var r=kids[i].getBoundingClientRect();var bottom=r.bottom+(window.scrollY||0);if(bottom>h)h=bottom;}catch(e){}}return Math.max(Math.ceil(h),1);}function post(){sched=false;var h;try{h=H();}catch(e){return;}if(h===last)return;last=h;try{parent.postMessage({type:'rb-h',slug:S,h:h},'*');}catch(e){}}function R(){if(sched)return;sched=true;setTimeout(post,16);}window.addEventListener('load',R);if(document.readyState==='complete')R();try{if(document.fonts&&document.fonts.ready)document.fonts.ready.then(R);}catch(e){}try{var ro=new ResizeObserver(R);ro.observe(document.documentElement);if(document.body)ro.observe(document.body);}catch(e){}[50,200,500,1000].forEach(function(t){setTimeout(R,t);});})();</script>`;
-}
-
-/** Render tolerance: force the manifest slug onto the take's data-rb; wrap
- *  unwrapped content. Take files stay untouched on disk. */
-function normalizeTake(markup, slug) {
-  const trimmed = (markup ?? "").trim();
-  if (!trimmed) return `<section data-rb="${slug}"></section>`;
-  if (/<(section|div|header|footer|main|article)\b[^>]*data-rb=/i.test(trimmed)) {
-    return trimmed.replace(/data-rb="[^"]*"/i, `data-rb="${slug}"`);
-  }
-  return `<section data-rb="${slug}">${trimmed}</section>`;
-}
-
-// Live-edit bridge the studio talks to over postMessage: token overrides
-// (recolor/respace the whole page with no reload) and inline text editing
-// (click text, type, save one new take). Both are user-driven and local.
-// Only leaf text elements become editable, so typing can never mangle the
-// section's structure. Toggling off strips the edit affordances and serializes
-// the clean markup back to the studio, which commits it as a new take.
-// Editing only adds/removes contenteditable + a marker attribute on leaf text
-// elements, so a clean toggle leaves the markup byte-identical (the snapshot
-// guard below relies on this to avoid saving a no-op take). The edit outline
-// is drawn by the parent's .editing class, not by touching frame styles.
-const BRIDGE = `<script>(function(){var R=document.documentElement,TE='h1,h2,h3,h4,h5,h6,p,li,a,span,button,td,th,blockquote,figcaption,strong,em,small,label',snap=null;function sec(){return document.querySelector('[data-rb]')||document.body;}function leaves(){var out=[],all=sec().querySelectorAll(TE);for(var i=0;i<all.length;i++){var el=all[i];if(el.childElementCount===0&&el.textContent.trim())out.push(el);}return out;}window.addEventListener('message',function(e){var d=e.data;if(!d)return;if(d.type==='rb-tokens'&&d.vars){for(var k in d.vars){try{R.style.setProperty(k,d.vars[k]);}catch(_){}}}else if(d.type==='rb-edit'){var s=sec();if(d.on){snap=s.outerHTML;leaves().forEach(function(el){el.setAttribute('contenteditable','true');el.setAttribute('data-rb-e','1');});}else{sec().querySelectorAll('[data-rb-e]').forEach(function(el){el.removeAttribute('contenteditable');el.removeAttribute('data-rb-e');});var out=s.outerHTML;if(snap!==null&&out!==snap){try{parent.postMessage({type:'rb-edited',markup:out},'*');}catch(_){}}snap=null;}}});})();</script>`;
-
-function buildFrameDoc(head, bodyAttrs, markup, slug) {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${REVEAL_CSS}${head}</head><body ${bodyAttrs}>${IO_SHIM}${normalizeTake(markup, slug)}${BRIDGE}${reporterFor(slug)}</body></html>`;
-}
-
-function assemblePage(head, bodyAttrs, markups) {
-  return `<!doctype html>
-<html lang="en">
-<head>
-${head}
-</head>
-<body${bodyAttrs ? " " + bodyAttrs : ""}>
-${markups.join("\n")}
-</body>
-</html>`;
-}
-
-/** Loud, never blocking: contract violations in a landed take. */
-function validateTake(markup) {
-  const warnings = [];
-  if (/<img\b/i.test(markup)) warnings.push("uses <img> (visuals must be inline SVG/CSS)");
-  if (/(src|href)=["']https?:\/\//i.test(markup)) warnings.push("references an external URL");
-  if (/@import|url\(\s*["']?https?:/i.test(markup)) warnings.push("styles pull an external resource");
-  const open = (markup.match(/<section\b/gi) || []).length;
-  const close = (markup.match(/<\/section>/gi) || []).length;
-  if (open !== close) warnings.push("unbalanced <section> tags");
-  return warnings;
 }
 
 // ---------------------------------------------------------------------------
@@ -300,10 +190,6 @@ function recentDone(n = 6) {
     if (json) out.push({ id: json.id, type: json.type, slug: json.target?.slug ?? null, result: json.result ?? "ok", note: json.note ?? "", ackedAt: json.ackedAt ?? null });
   }
   return out.reverse();
-}
-
-function statMtime(p) {
-  try { return fs.statSync(p).mtimeMs; } catch { return null; }
 }
 
 // ---------------------------------------------------------------------------
@@ -532,7 +418,6 @@ function startWatcher() {
 // http
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png" };
-const FRAME_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;";
 
 function send(res, code, body, headers = {}) {
   res.writeHead(code, { "Cache-Control": "no-store", ...headers });
