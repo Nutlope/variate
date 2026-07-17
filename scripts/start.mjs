@@ -30,7 +30,10 @@ for (const d of ["site/sections", "requests/done", "state", "sketches", "assets"
 }
 const manifestPath = path.join(WS, "site", "manifest.json");
 if (!fs.existsSync(manifestPath)) {
-  fs.writeFileSync(manifestPath, JSON.stringify({ version: 1, rev: 0, title: "", bodyAttrs: "", sections: [] }, null, 2) + "\n");
+  fs.writeFileSync(manifestPath, JSON.stringify({
+    version: 2, rev: 0, title: "", bodyAttrs: "",
+    pages: [{ id: "index", title: "Home", route: "index.html", sections: [] }],
+  }, null, 2) + "\n");
 }
 const decisionsPath = path.join(WS, "site", "DECISIONS.md");
 if (!fs.existsSync(decisionsPath)) {
@@ -97,7 +100,10 @@ if (!live) {
 
 const url = `http://127.0.0.1:${live.port}`;
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-const empty = !manifest.sections?.length;
+const pages = Array.isArray(manifest.pages)
+  ? manifest.pages
+  : [{ id: "index", title: "Home", sections: manifest.sections ?? [] }]; // v1 ws: server migrates at boot
+const empty = pages.every((pg) => !pg.sections?.length);
 
 if (!args.noOpen && process.platform === "darwin") {
   try { spawn("open", [url], { detached: true, stdio: "ignore" }).unref(); } catch { /* ignore */ }
@@ -107,7 +113,7 @@ console.log(`STUDIO   ${url}   (open this in a browser; it live-updates as files
 console.log(`WORKSPACE ${WS}`);
 console.log(empty
   ? `PAGE     empty. Bootstrap first: read references/recipes.md (Bootstrap), write site/head.html + first sections + manifest. Read site/DECISIONS.md too.`
-  : `PAGE     ${manifest.sections.length} sections: ${manifest.sections.map((s) => s.slug).join(", ")}. Read site/DECISIONS.md for the design tree so far.`);
+  : `PAGES    ${pages.map((pg) => `${pg.id} (${(pg.sections ?? []).map((s) => s.slug).join(", ") || "empty"})`).join(" · ")}. Read site/DECISIONS.md for the design tree so far.`);
 console.log(`MODE     terminal-first: talk with the user, edit the workspace files directly, and between turns fold in studio clicks with:`);
 console.log(`DRAIN    node ${path.join(HERE, "await.mjs")} --ws ${WS} --drain   (prints queued studio requests as a JSON array; exit 2 = none; never blocks)`);
 console.log(`STUDIO-MODE  only if the user says they want to click instead of talk: node ${path.join(HERE, "await.mjs")} --ws ${WS}   (blocks for one request; ack with --ack <id> --note "...")`);

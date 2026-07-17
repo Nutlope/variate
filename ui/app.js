@@ -5,16 +5,23 @@ import { render, tickLive } from "/ui/render.js";
 import { op } from "/ui/api.js";
 
 export const store = {
-  state: null,          // last /api/state payload
-  selected: null,       // slug
+  state: null,          // last /api/state payload (v2: pages[])
+  page: null,           // active page id (resolved to the first page on load)
+  selected: null,       // slug within the active page
   highlight: null,      // slug hovered in the rail
   openInsert: null,     // index of the open insert menu
-  openMenu: null,       // {slug, kind: "variate" | "prompt"}
+  openMenu: null,       // {slug, kind: "variate" | "prompt"} | {kind: "add-page"}
   variateCount: Number(localStorage.getItem("variate.count") || 1),
   device: Number(localStorage.getItem("variate.device") || 1280),
-  landed: new Set(),    // slugs to glow this render
+  landed: new Set(),    // page/slug keys to glow this render
   prevHashes: new Map(),
 };
+
+/** The active page object (always resolves to something real when pages exist). */
+export function curPage() {
+  const pages = store.state?.pages ?? [];
+  return pages.find((p) => p.id === store.page) ?? pages[0] ?? null;
+}
 
 export function setState(patch) {
   Object.assign(store, patch);
@@ -24,15 +31,23 @@ export function setState(patch) {
 }
 
 function onServerState(state) {
-  // Landed glow: any section whose content hash changed since last state.
+  // Landed glow: any section whose content hash changed since last state,
+  // tracked per page/slug so page switches never false-positive.
   store.landed = new Set();
-  for (const s of state.sections) {
-    const prev = store.prevHashes.get(s.slug);
-    if (prev && prev !== s.hash) store.landed.add(s.slug);
+  const hashes = new Map();
+  for (const pg of state.pages) {
+    for (const s of pg.sections) {
+      const key = pg.id + "/" + s.slug;
+      const prev = store.prevHashes.get(key);
+      if (prev && prev !== s.hash) store.landed.add(key);
+      hashes.set(key, s.hash);
+    }
   }
-  store.prevHashes = new Map(state.sections.map((s) => [s.slug, s.hash]));
-  if (store.selected && !state.sections.some((s) => s.slug === store.selected)) store.selected = null;
+  store.prevHashes = hashes;
   store.state = state;
+  if (!state.pages.some((p) => p.id === store.page)) store.page = state.pages[0]?.id ?? null;
+  const pg = curPage();
+  if (store.selected && !pg?.sections.some((s) => s.slug === store.selected)) store.selected = null;
   render();
 }
 
@@ -67,8 +82,9 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   const slug = store.selected;
-  if (!slug) return;
-  const sec = store.state?.sections.find((s) => s.slug === slug);
+  const pg = curPage();
+  if (!slug || !pg) return;
+  const sec = pg.sections.find((s) => s.slug === slug);
   if (!sec) return;
 
   if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
@@ -76,10 +92,10 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
     const dir = e.key === "ArrowRight" ? 1 : -1;
     const next = ((sec.active + dir) % sec.takes + sec.takes) % sec.takes;
-    op({ op: "pick", slug, take: next }).catch(() => {});
+    op({ op: "pick", page: pg.id, slug, take: next }).catch(() => {});
   } else if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
     e.preventDefault();
-    op({ op: "move", slug, dir: e.key === "ArrowUp" ? "up" : "down" }).catch(() => {});
+    op({ op: "move", page: pg.id, slug, dir: e.key === "ArrowUp" ? "up" : "down" }).catch(() => {});
   } else if (e.key === "Backspace" || e.key === "Delete") {
     e.preventDefault();
     window.dispatchEvent(new CustomEvent("variate:cut", { detail: { slug } }));

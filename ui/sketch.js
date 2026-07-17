@@ -5,6 +5,7 @@
 // so the serialized blueprint's geometry is grounded in the real layout.
 
 import { request, toast } from "/ui/api.js";
+import { curPage } from "/ui/app.js";
 
 const KIND_LABEL = {
   heading: "heading", text: "paragraph text", button: "button / call to action",
@@ -374,9 +375,10 @@ async function run() {
   if (!blueprint) { toast("draw a box or two first"); return; }
   const note = cur.els.foot.querySelector("[data-sk='note']")?.value.trim();
   const slug = cur.slug;
+  const page = curPage()?.id;
   let png = null;
   try { png = await rasterize(); } catch { /* blueprint alone is fine */ }
   persist();
   closeSketch(true);
-  await request("sketch", { slug }, { blueprint, instruction: note || undefined }, png);
+  await request("sketch", { page, slug }, { blueprint, instruction: note || undefined }, png);
 }

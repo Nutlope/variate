@@ -10,9 +10,10 @@ trap 'kill $SRV 2>/dev/null || true' EXIT
 sleep 1
 J() { node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{const j=JSON.parse(s);console.log($1)})"; }
 
-echo "-- queue a variate request"
+echo "-- queue a variate request (target gains the default page)"
 ID=$(curl -s -X POST localhost:$PORT/api/request -H 'Content-Type: application/json' -d '{"type":"variate","target":{"slug":"hero"},"params":{"count":2,"steer":"bolder"}}' | J 'j.id')
 test -f "$WS/requests/$ID-variate-hero.json"
+grep -q '"page": "index"' "$WS/requests/$ID-variate-hero.json"
 
 echo "-- await claims it (exit 0), file becomes .working"
 OUT=$(node scripts/await.mjs --ws "$WS" --timeout 5); RC=$?
@@ -22,7 +23,7 @@ echo "$OUT" | grep -q '"steer":"bolder"'
 test -f "$WS/requests/$ID-variate-hero.json.working"
 
 echo "-- state shows hero busy"
-test "$(curl -s localhost:$PORT/api/state | J 'j.sections.find(x=>x.slug==="hero").busy?.type ?? "none"')" = "variate"
+test "$(curl -s localhost:$PORT/api/state | J 'j.pages[0].sections.find(x=>x.slug==="hero").busy?.type ?? "none"')" = "variate"
 
 echo "-- orphaned claim redelivers with redelivered:true"
 OUT2=$(node scripts/await.mjs --ws "$WS" --timeout 5)

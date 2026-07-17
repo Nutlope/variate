@@ -3,12 +3,12 @@ name: variate
 description: >
   Design landing pages with the user through rounds of concrete variants: you
   draft structurally different takes of each section, the user compares them
-  in a live local preview and answers in the terminal, and the page converges
-  section by section. Use when the user wants to build, design, or iterate a
-  landing page, marketing site, or homepage; when they ask for design
-  variations or prototypes to choose between; or to continue an existing
-  variate workspace ("open the variate studio"). Starts a local server; ends
-  with a polished, shippable export.
+  in a live local preview and answers in the terminal, and the site converges
+  section by section, page by page. Use when the user wants to build, design,
+  or iterate a landing page, marketing site, homepage, or small multi-page
+  website; when they ask for design variations or prototypes to choose
+  between; or to continue an existing variate workspace ("open the variate
+  studio"). Starts a local server; ends with a polished, shippable export.
 license: MIT
 compatibility: Requires Node.js 18+ and a local web browser. macOS/Linux first.
 metadata:
@@ -29,18 +29,21 @@ read `site/DECISIONS.md` so you never re-litigate a settled round.
 
 ```
 site/head.html              the design system: ONE <style> with :root tokens,
-                            type scale, buttons. The only file you may edit
-                            in place (bootstrap and polish only).
-site/manifest.json          {version, rev, title, bodyAttrs, sections:
-                            [{slug, takes:["take-1.html", ...], active}]}
-site/sections/<slug>/       take files. IMMUTABLE: never edit or delete a
+                            type scale, buttons. Shared by every page; the
+                            only file you may edit in place (bootstrap and
+                            polish only).
+site/manifest.json          {version: 2, rev, title, bodyAttrs, pages:
+                            [{id, title, route, sections: [{slug,
+                            takes: ["take-1.html", ...], active}]}]}
+site/sections/<page>/<slug>/  take files. IMMUTABLE: never edit or delete a
                             take; always add take-<N+1>.html (N = highest).
 site/DECISIONS.md           append-only design-round log: question, takes,
                             verdict, why. Read at session start.
 requests/ requests/done/    the studio click queue. NEVER touch these files
                             yourself; await.mjs is the only interface.
 sketches/ assets/           sketch payloads; the user's images.
-dist/                       the assembled export.
+dist/                       the export: one flat <route>.html per page plus
+                            assets/, ship-ready.
 ```
 
 ## Start
@@ -64,8 +67,8 @@ The conversation drives; nothing blocks. Work like this:
    studio hot-reloads and journals your changes as you write).
 2. **Run design rounds** for anything worth a decision: takes first, then one
    question. The full loop is the "Design rounds" recipe; its compare views
-   (`/compare/<slug>` live, or `scripts/compare.mjs` for a static file) are
-   how the user flips between takes.
+   (`/compare/<page>/<slug>` live, or `scripts/compare.mjs --page --slug` for
+   a static file) are how the user flips between takes.
 3. **Fold in studio clicks between turns**:
    `node <skill>/scripts/await.mjs --ws <ws> --drain`
    prints every queued studio request as ONE JSON array and exits (2 = none).
@@ -94,14 +97,18 @@ your takes already landed before writing duplicates; if they did, just ack.
 
 ## Request types (studio clicks and their recipes)
 
-| type     | target        | fulfill by                                                      | recipe    |
-|----------|---------------|------------------------------------------------------------------|-----------|
-| variate  | `target.slug` | `params.count` new takes, each diverging from ALL existing takes; `params.steer` bends them; set `active` to your first new take | Variate |
-| instruct | `target.slug` | one new take applying `params.instruction` exactly, nothing else  | Instruct  |
-| add      | position via `params.position` (`start`, `end`, `after:<slug>`) | new section dir + take-1 + manifest entry at the position; `params.kind` names a catalog entry, else `params.instruction` describes it | Add |
-| sketch   | `target.slug` | one new take whose COMPOSITION matches `params.blueprint` (and `params.png` if you can read images) | Sketch |
-| polish   | whole page    | unify seams: new take per section that needs it + fold `v<id>-` styles into head.html | Polish |
-| done     | -             | ack, point the user at dist/index.html, stop looping             | -         |
+Every target carries `target.page` (the page id); section work goes under
+`site/sections/<page>/<slug>/`.
+
+| type     | target             | fulfill by                                                      | recipe    |
+|----------|--------------------|------------------------------------------------------------------|-----------|
+| variate  | `page` + `slug`    | `params.count` new takes, each diverging from ALL existing takes; `params.steer` bends them; set `active` to your first new take | Variate |
+| instruct | `page` + `slug`    | one new take applying `params.instruction` exactly, nothing else  | Instruct  |
+| add      | `page`; position via `params.position` (`start`, `end`, `after:<slug>`) | new section dir + take-1 + manifest entry at the position; `params.kind` names a catalog entry, else `params.instruction` describes it | Add |
+| sketch   | `page` + `slug`    | one new take whose COMPOSITION matches `params.blueprint` (and `params.png` if you can read images) | Sketch |
+| polish   | `page`             | unify that page's seams: new take per section that needs it + fold `v<id>-` styles into head.html | Polish |
+| page     | -                  | a new page from `params.id` + `params.title`: manifest entry (route `<id>.html`), then draft its nav + hero in the site's language | Pages |
+| done     | -                  | ack, point the user at dist/, stop looping                       | -         |
 
 ## The fragment contract (short form; full form in recipes.md)
 
@@ -137,6 +144,19 @@ re-read fresh state before writing:
   polish or any head edit.
 - **Inline text edits** - clicking text and retyping saves a new take, so a
   section may gain takes you did not draw.
+
+## Look at what you made
+
+Never ack work you have not checked:
+
+1. ALWAYS: `GET /api/state` (or re-read the take) and fix any `warning` on
+   the sections you touched (contract violations, missing assets) BEFORE
+   acking.
+2. If your harness can open web pages, LOOK at the result: the studio, or
+   `/page?p=<id>`, or `/compare/<page>/<slug>`. Check desktop and a ~390px
+   viewport; fix what is broken, then ack.
+3. After an export, open `dist/index.html` (or tell the user to) and confirm
+   every page and image made it.
 
 ## Rules of the road
 

@@ -1,37 +1,38 @@
 # variate
 
-Turn the coding agent you already pay for into a landing-page studio.
+Turn the coding agent you already pay for into a website studio you direct
+from the terminal.
 
 `variate` is an [Agent Skill](https://agentskills.io) that works in Claude
 Code, OpenAI Codex CLI, Cursor, and any other agent that supports the open
 skill format (or can run a shell command; see below). Your agent writes the
-page one section at a time; you art-direct from a live local preview:
+site one section at a time; you art-direct it through **design rounds**: it
+drafts a handful of structurally different takes, you flip through them in a
+live preview, and you answer in the terminal ("2, but with 4's stat strip").
+That sentence IS the design; the agent draws it, logs the verdict, and the
+site converges one decision at a time.
 
-- **Variate a section**: 1 to 4 alternative takes land in place, stack behind
-  a pager, and you keep the one you like. Steer them with one word (calmer,
-  bolder, airier, denser, playful).
-- **Prompt a section**: a scoped edit that touches nothing else.
-- **Add a section between sections**: a hairline blooms into a catalog
-  (features, pricing, FAQ, waitlist form...) or a custom ask.
-- **Sketch a section, on the section**: the real section dims to tracing
-  paper and you draw the new layout right on top of it, where the elements
-  actually are. It serializes into a geometric blueprint (plus a PNG for
-  vision models) and the agent redraws it in the page's own design language.
-- **Move, cut, swap takes, undo**: instant, no agent turn burned.
-- **Retune the whole page live**: a design-token editor over your `head.html`
-  `:root`. Drag a color or change a spacing value and every section restyles
-  instantly, no reload, no model turn.
-- **Edit copy in place**: click any text in a section and retype it; it saves
-  as a new take. No round trip to the agent for a headline tweak.
-- **Done**: one self-contained `dist/index.html`, no build step, no CDN.
+- **Design rounds**: 5 wildly different takes of a section, compared in
+  place between their real neighbors, picked by keyboard or by talking.
+  Verdicts append to `site/DECISIONS.md`, so the design tree survives
+  restarts and context loss.
+- **The studio** (a zero-dep local server): a live section stack with
+  variate/steer, scoped prompt edits, an in-place tracing-paper **sketch
+  pad**, drag-and-drop **images**, a live **design-token editor** over your
+  `:root`, inline **text editing**, takes pagers, move/cut/discard/undo.
+  Deterministic tools apply instantly; only generative asks reach the agent.
+- **Terminal-first**: the agent never sits blocked. It folds studio clicks
+  in between conversational turns (`await.mjs --drain`); a blocking studio
+  mode exists when you would rather click than talk.
+- **Multi-page**: pages share one design system; the studio grows tabs; the
+  export is flat (`index.html`, `about.html`, `assets/`) so links work from
+  disk and on any static host.
+- **Ship-ready export**: every page gets a meta description, OG tags, and a
+  favicon derived from its own copy and logo mark. `npx serve dist`, drag
+  dist/ into Netlify, or `vercel deploy dist`: nothing else to configure.
 
-The deterministic tools (move, cut, take-pick, undo, tokens, text edits) never
-spend a model turn: the local server applies them and the agent only ever
-handles the genuinely generative asks (variate, edit, add, sketch, polish).
-
-Everything runs local: a zero-dependency Node server bound to 127.0.0.1, a
-file-queue bridge between the browser and the agent, no accounts, no
-telemetry, no API keys beyond whatever runs your agent.
+Everything runs local: 127.0.0.1 only, no accounts, no telemetry, no API
+keys beyond whatever runs your agent.
 
 ## Install
 
@@ -58,39 +59,45 @@ In your agent, in any project:
 /variate build a landing page for my soil-testing startup
 ```
 
-The agent boots the studio (default http://127.0.0.1:4177), bootstraps the
-page from your brief, and then waits on your clicks. Keep talking to the
-agent OR click the page; both work on the same files.
+The agent boots the studio (default http://127.0.0.1:4177), drafts the
+design system and opening sections from your brief, then runs the first
+design round. Keep talking in the terminal OR click in the studio; both land
+on the same files.
 
 ## How it works
 
 ```
-browser studio  ->  POST /api/request  ->  requests/0007-variate-hero.json
-                                                 |
-agent loop:  await.mjs (blocks, prints request JSON, exits)
-             -> writes site/sections/hero/take-4.html + manifest
-             -> await.mjs --ack 0007 --note "drew 2 takes"
-                                                 |
-server watches files -> SSE -> only the touched section's iframe reloads
+you, in the terminal  <->  the agent (writes site/sections/<page>/<slug>/take-N.html)
+        |                        |
+        |            node await.mjs --drain   (folds in studio clicks, never blocks)
+        |                        |
+   the studio  ->  POST /api/request  ->  requests/0007-variate-hero.json
+   (live viewer,   deterministic ops (move/cut/pick/discard/undo, tokens,
+    picker, sketch,  text edits) applied by the server instantly
+    drag-drop)
+        |
+   server watches files -> SSE -> only the touched section's iframe reloads
 ```
 
 - Take files are immutable; every mutation is a manifest mutation; undo is a
-  journal-backed manifest restore. Cut never deletes work.
-- Deterministic ops (move / cut / pick / undo) are applied by the server
-  instantly; only generative asks reach the agent.
+  journal-backed manifest restore. Cut and discard never delete work.
 - Sections render in sandboxed iframes (`allow-scripts`, never
-  `allow-same-origin`) with a strict CSP, so generated code cannot touch the
-  studio.
+  `allow-same-origin`) behind a strict CSP; generated code cannot touch the
+  studio, and external requests are blocked and flagged.
 - The workspace is plain files under `./variate/` in your project: diff it,
-  commit it, or point the skill at a Recast export and keep building.
+  commit it, or import any single-file page with `data-rb` sections (Recast
+  exports continue seamlessly).
 
 ## Dev
 
 ```bash
-node scripts/serve.mjs --ws fixtures/demo-ws --port 4177   # studio on the fixture
-node fixtures/pseudo-agent.mjs --ws fixtures/demo-ws       # canned agent, no LLM
-dev/smoke-1.sh && dev/smoke-2.sh && dev/smoke-3.sh          # protocol tests
+node scripts/serve.mjs --ws fixtures/demo-ws --port 4177    # studio on the fixture
+node fixtures/pseudo-agent.mjs --ws fixtures/demo-ws        # canned agent, no LLM
+for t in 1 2 3 4 5; do dev/smoke-$t.sh; done                # protocol tests
 ```
 
+The fixture workspace is deliberately v1; the server migrates it to the
+multi-page v2 layout at boot, which is itself under test (smoke-5).
+
 macOS first; Linux uses a polling watcher (`--poll` forces it anywhere);
-Windows is untested in v1.
+Windows is untested.

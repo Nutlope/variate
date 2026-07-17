@@ -1,19 +1,16 @@
 // DOM rendering for the studio. No framework, but the discipline of one:
 // nothing the user is interacting with is ever destroyed by a render.
 //
-//  - Frames (iframes) are created once and reused; DOM order is only touched
-//    when the section order actually changes, so untouched sections never
-//    reload.
-//  - Each frame's chrome (chip, toolbar) is built once; renders update it in
-//    place via refs and classes, never innerHTML.
-//  - Popovers (prompt textarea, variate menu, insert input) live OUTSIDE the
-//    render cycle: opened on demand, left strictly alone while open, removed
-//    on close. A render never recreates an open popover, so typing survives.
-//  - The rail re-renders only when its signature changes (kills per-tick
-//    flicker), and the 1s tick updates only busy timers.
+//  - Frames (iframes) are created once per page/section and reused; DOM order
+//    is only touched when the active page's section order changes.
+//  - Each frame's chrome is built once; renders update it in place via refs.
+//  - Popovers (prompt textarea, variate menu, insert input, add-page) live
+//    OUTSIDE the render cycle: never recreated while open, so typing survives.
+//  - The rail re-renders only when its signature changes; the 1s tick updates
+//    only busy timers.
 
 import { op, request, toast } from "/ui/api.js";
-import { setState, store } from "/ui/app.js";
+import { setState, store, curPage } from "/ui/app.js";
 import { openSketch, isSketching } from "/ui/sketch.js";
 import { mountTokens, syncTokens } from "/ui/tokens.js";
 
@@ -35,18 +32,21 @@ const SUGGESTIONS = {
 const GENERIC = ["More whitespace", "Simplify the layout", "Turn up the contrast"];
 
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const slugify = (s) => String(s ?? "").toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-{2,}/g, "-").replace(/^-|-$/g, "");
 
 // ---------------------------------------------------------------------------
 // module state
 
-const frames = new Map(); // slug -> { wrap, box, iframe, chrome, busyEl, hash, rawH }
-let openPop = null;       // { slug, kind, el }
+const frames = new Map(); // "<pageId>/<slug>" -> { wrap, box, iframe, chrome, busyEl, hash, rawH }
+let openPop = null;       // { key: "<pageId>/<slug>" | "@add-page", kind, el }
 let openInsert = null;    // { index, el }
 let railSig = "";
 let stackKey = "";
 let scaffolded = false;
 let tokensMounted = false;
-let stackEl, railEl, railA, railB, titleEl, deviceSeg;
+let stackEl, railEl, railA, railB, titleEl, deviceSeg, pageSeg;
+
+const fkey = (slug) => (curPage()?.id ?? "index") + "/" + slug;
 
 /** Post a message to every live frame iframe (token overrides, edit toggle). */
 export function postToFrames(msg) {
@@ -63,6 +63,7 @@ function scaffold() {
       <span class="brand"><span class="dot"></span>variate</span>
       <span class="title" id="page-title"></span>
       <div class="right">
+        <div class="seg" id="page-seg"></div>
         <div class="seg" id="device-seg">
           <button data-action="device" data-w="1280">Desktop</button>
           <button data-action="device" data-w="768">Tablet</button>
@@ -82,6 +83,7 @@ function scaffold() {
   railB = document.getElementById("rail-b");
   titleEl = document.getElementById("page-title");
   deviceSeg = document.getElementById("device-seg");
+  pageSeg = document.getElementById("page-seg");
 
   stackEl.addEventListener("click", onStackClick);
   railEl.addEventListener("click", onRailClick);
@@ -96,6 +98,7 @@ function scaffold() {
     const b = e.target.closest("[data-action='device']");
     if (b) setState({ device: Number(b.dataset.w) });
   });
+  pageSeg.addEventListener("click", onPageSegClick);
 
   window.addEventListener("message", onFrameMessage);
   window.addEventListener("resize", () => { for (const [, f] of frames) applyGeometry(f); });
@@ -126,34 +129,46 @@ function scaffold() {
       } catch { toast(`could not read ${file.name}`); }
     }
   });
+
   // Click anywhere that is not a popover or a menu trigger closes menus.
   document.addEventListener("mousedown", (e) => {
-    if (e.target.closest(".pop") || e.target.closest("[data-action='menu']") || e.target.closest("[data-action='insert']")) return;
+    if (e.target.closest(".pop") || e.target.closest("[data-action='menu']") || e.target.closest("[data-action='insert']") || e.target.closest("[data-action='add-page']")) return;
     if (openPop || openInsert) setState({ openMenu: null, openInsert: null });
   }, true);
 
   scaffolded = true;
 }
 
-// Highlight is cosmetic (rail hover -> frame ring); update classes without a
-// full render so hovering the rail never triggers a re-render storm.
 function setHighlight(slug) {
   store.highlight = slug;
-  for (const [s, f] of frames) f.wrap.classList.toggle("hi", s === slug && store.selected !== s);
+  for (const [key, f] of frames) f.wrap.classList.toggle("hi", key === fkey(slug) && store.selected !== slug);
 }
 
 // ---------------------------------------------------------------------------
 // geometry
 
 function onFrameMessage(e) {
-  if (!e.data || e.data.type !== "rb-h") return;
-  for (const [, f] of frames) {
-    if (f.iframe.contentWindow === e.source) {
-      const h = Math.max(40, Math.min(6000, Number(e.data.h) || 0));
-      if (Math.abs(h - f.rawH) < 2) return;
-      f.rawH = h;
-      applyGeometry(f);
-      return;
+  if (!e.data) return;
+  if (e.data.type === "rb-h") {
+    for (const [, f] of frames) {
+      if (f.iframe.contentWindow === e.source) {
+        const h = Math.max(40, Math.min(6000, Number(e.data.h) || 0));
+        if (Math.abs(h - f.rawH) < 2) return;
+        f.rawH = h;
+        applyGeometry(f);
+        return;
+      }
+    }
+  } else if (e.data.type === "rb-edited") {
+    for (const [key, f] of frames) {
+      if (f.iframe.contentWindow === e.source) {
+        const [page, slug] = key.split("/");
+        editing.delete(key);
+        f.wrap.classList.remove("editing");
+        fetch("/api/text", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ page, slug, markup: e.data.markup }) })
+          .then((r) => r.json()).then((res) => { if (res.ok) toast(`saved your text edits to ${slug} as a new take`); }).catch(() => {});
+        return;
+      }
     }
   }
 }
@@ -177,27 +192,31 @@ export function render() {
   if (!st) return;
   if (!scaffolded) scaffold();
 
-  titleEl.textContent = st.title || (st.empty ? "an empty page, waiting for its brief" : "untitled");
+  const pg = curPage();
+  titleEl.textContent = st.title || (st.empty ? "an empty site, waiting for its brief" : "untitled");
   for (const b of deviceSeg.children) b.classList.toggle("on", Number(b.dataset.w) === store.device);
+  renderPageTabs(st, pg);
 
-  reconcileFrames(st);
-  for (const s of st.sections) {
-    const f = frames.get(s.slug);
-    if (f) updateFrame(f, s, st);
+  reconcileFrames(st, pg);
+  if (pg) {
+    for (const s of pg.sections) {
+      const f = frames.get(pg.id + "/" + s.slug);
+      if (f) updateFrame(f, s, pg);
+    }
   }
   syncPopover();
   syncInsert();
-  renderRail(st);
+  renderRail(st, pg);
   if (!tokensMounted) { mountTokens(document.getElementById("tokens-card")); tokensMounted = true; }
   syncTokens(st.headHash);
 }
 
 // 1s tick: only the live-changing bits (busy elapsed), never structure.
 export function tickLive() {
-  const st = store.state;
-  if (!st) return;
-  for (const s of st.sections) {
-    const f = frames.get(s.slug);
+  const pg = curPage();
+  if (!pg) return;
+  for (const s of pg.sections) {
+    const f = frames.get(pg.id + "/" + s.slug);
     if (f?.busyEl && s.busy?.claimedAt) {
       const el = f.busyEl.querySelector("[data-elapsed]");
       if (el) el.textContent = Math.round((Date.now() - s.busy.claimedAt) / 1000) + "s";
@@ -206,32 +225,87 @@ export function tickLive() {
 }
 
 // ---------------------------------------------------------------------------
+// page tabs
+
+function renderPageTabs(st, pg) {
+  const want = st.pages.map((p) => `${p.id}:${p.id === pg?.id ? 1 : 0}`).join("|");
+  if (pageSeg.dataset.sig === want) return;
+  pageSeg.dataset.sig = want;
+  pageSeg.innerHTML = st.pages.map((p) =>
+    `<button data-page="${esc(p.id)}" class="${p.id === pg?.id ? "on" : ""}" title="${esc(p.title)}">${esc(p.title || p.id)}</button>`
+  ).join("") + `<button data-action="add-page" title="add a page">+</button>`;
+}
+
+function onPageSegClick(e) {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (b.dataset.page) {
+    setState({ page: b.dataset.page, selected: null, openMenu: null, openInsert: null });
+  } else if (b.dataset.action === "add-page") {
+    setState({ openMenu: openPop?.key === "@add-page" ? null : { kind: "add-page" }, openInsert: null });
+  }
+}
+
+function addPageMenu() {
+  const el = document.createElement("div");
+  el.className = "pop";
+  el.style.right = "12px";
+  el.style.top = "52px";
+  el.innerHTML = `
+    <p class="cap">add a page</p>
+    <input type="text" placeholder="Page title, e.g. About" style="margin:8px 0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="go" data-add-page-go>ask the agent to draft it</button>
+      <span class="hint">it lands with a nav + hero to start</span>
+    </div>`;
+  const input = el.querySelector("input");
+  const go = () => {
+    const title = input.value.trim();
+    if (!title) return;
+    const id = slugify(title) || "page";
+    request("page", null, { id, title }).catch(() => {});
+    toast(`asked the agent to draft the ${title} page`);
+    setState({ openMenu: null });
+  };
+  el.querySelector("[data-add-page-go]").addEventListener("click", go);
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") go();
+    if (e.key === "Escape") setState({ openMenu: null });
+  });
+  setTimeout(() => input.focus(), 30);
+  return el;
+}
+
+// ---------------------------------------------------------------------------
 // frames
 
-function reconcileFrames(st) {
-  // remove gone
-  for (const slug of [...frames.keys()]) {
-    if (!st.sections.some((s) => s.slug === slug)) {
-      frames.get(slug).wrap.remove();
-      frames.delete(slug);
-      if (openPop?.slug === slug) { openPop.el.remove(); openPop = null; }
+function reconcileFrames(st, pg) {
+  const wantKeys = new Set((pg?.sections ?? []).map((s) => pg.id + "/" + s.slug));
+  for (const key of [...frames.keys()]) {
+    if (!wantKeys.has(key)) {
+      frames.get(key).wrap.remove();
+      frames.delete(key);
+      if (openPop?.key === key) { openPop.el.remove(); openPop = null; }
     }
   }
 
-  if (st.empty) {
-    if (stackKey !== "EMPTY") {
+  if (!pg || pg.sections.length === 0) {
+    const label = st.empty ? "Nothing on the site yet." : `Nothing on ${pg?.title ?? "this page"} yet.`;
+    const key = "EMPTY:" + (pg?.id ?? "-");
+    if (stackKey !== key) {
       stackEl.textContent = "";
       const d = document.createElement("div");
       d.className = "empty-state";
-      d.innerHTML = `<h2>Nothing on the page yet.</h2><p>Ask your agent to bootstrap it: describe the product, and it writes the design system and the first sections here.</p>`;
+      d.innerHTML = `<h2>${esc(label)}</h2><p>Ask your agent to draft it: describe what this ${st.empty ? "site" : "page"} is for, and sections land here as they are written.</p>`;
       stackEl.appendChild(d);
-      stackKey = "EMPTY";
+      stackKey = key;
     }
     return;
   }
 
-  const key = st.sections.map((s) => s.slug).join("|") + (st.manifestError ? "|err" : "");
-  if (key === stackKey) return; // order unchanged: leave DOM (no reloads)
+  const key = pg.id + "::" + pg.sections.map((s) => s.slug).join("|") + (st.manifestError ? "|err" : "");
+  if (key === stackKey) return; // order unchanged: leave DOM alone (no reloads)
   stackKey = key;
 
   stackEl.textContent = "";
@@ -241,20 +315,22 @@ function reconcileFrames(st) {
     b.textContent = st.manifestError;
     stackEl.appendChild(b);
   }
-  st.sections.forEach((s, i) => {
+  pg.sections.forEach((s, i) => {
     stackEl.appendChild(makeInsert(i));
-    stackEl.appendChild(ensureFrame(s).wrap);
+    stackEl.appendChild(ensureFrame(pg.id, s).wrap);
   });
-  stackEl.appendChild(makeInsert(st.sections.length));
+  stackEl.appendChild(makeInsert(pg.sections.length));
 }
 
-function ensureFrame(s) {
-  let f = frames.get(s.slug);
+function ensureFrame(pageId, s) {
+  const key = pageId + "/" + s.slug;
+  let f = frames.get(key);
   if (f) return f;
 
   const wrap = document.createElement("div");
   wrap.className = "frame-wrap";
   wrap.dataset.slug = s.slug;
+  wrap.dataset.page = pageId;
 
   const box = document.createElement("div");
   box.className = "frame-box";
@@ -270,7 +346,7 @@ function ensureFrame(s) {
   wrap.appendChild(chrome.root);
 
   f = { wrap, box, iframe, chrome, busyEl: null, hash: null, rawH: 300, sketching: false };
-  frames.set(s.slug, f);
+  frames.set(key, f);
   return f;
 }
 
@@ -320,9 +396,10 @@ function buildChrome(slug) {
   };
 }
 
-function updateFrame(f, s, st) {
-  const idx = st.sections.findIndex((x) => x.slug === s.slug);
+function updateFrame(f, s, pg) {
+  const idx = pg.sections.findIndex((x) => x.slug === s.slug);
   const c = f.chrome;
+  const key = pg.id + "/" + s.slug;
 
   f.wrap.classList.toggle("selected", store.selected === s.slug);
   f.wrap.classList.toggle("hi", store.highlight === s.slug && store.selected !== s.slug);
@@ -337,7 +414,7 @@ function updateFrame(f, s, st) {
   if (s.takes >= 2) c.pagerText.textContent = `${s.active + 1}/${s.takes}`;
   c.variateLabel.textContent = `variate ×${store.variateCount}`;
   c.up.disabled = idx === 0;
-  c.down.disabled = idx === st.sections.length - 1;
+  c.down.disabled = idx === pg.sections.length - 1;
 
   // busy layer
   if (s.busy) {
@@ -361,8 +438,8 @@ function updateFrame(f, s, st) {
   if (f.hash !== s.hash) {
     const first = f.hash === null;
     f.hash = s.hash;
-    f.iframe.src = `/frame/${encodeURIComponent(s.slug)}?v=${s.hash}`;
-    if (!first && store.landed.has(s.slug)) {
+    f.iframe.src = `/frame/${encodeURIComponent(pg.id)}/${encodeURIComponent(s.slug)}?v=${s.hash}`;
+    if (!first && store.landed.has(key)) {
       f.box.classList.remove("take-landed");
       void f.box.offsetWidth;
       f.box.classList.add("take-landed");
@@ -375,18 +452,29 @@ function updateFrame(f, s, st) {
 // popovers (managed outside render; never recreated while open)
 
 function syncPopover() {
-  const want = store.openMenu; // { slug, kind } | null
+  const want = store.openMenu; // { slug, kind } | { kind: "add-page" } | null
   if (!want) { if (openPop) { openPop.el.remove(); openPop = null; } return; }
-  if (openPop && openPop.slug === want.slug && openPop.kind === want.kind) {
+
+  if (want.kind === "add-page") {
+    if (openPop?.key === "@add-page") return;
+    if (openPop) openPop.el.remove();
+    const el = addPageMenu();
+    document.querySelector("header.bar").appendChild(el);
+    openPop = { key: "@add-page", kind: "add-page", el };
+    return;
+  }
+
+  const key = fkey(want.slug);
+  if (openPop && openPop.key === key && openPop.kind === want.kind) {
     if (want.kind === "variate") refreshVariateMenu(openPop.el); // safe: no user text
     return;
   }
   if (openPop) openPop.el.remove();
-  const f = frames.get(want.slug);
+  const f = frames.get(key);
   if (!f) { openPop = null; return; }
   const el = want.kind === "variate" ? variateMenu(want.slug) : promptMenu(want.slug);
   f.wrap.appendChild(el);
-  openPop = { slug: want.slug, kind: want.kind, el };
+  openPop = { key, kind: want.kind, el };
   if (want.kind === "prompt") {
     const ta = el.querySelector("textarea");
     ta?.focus();
@@ -486,7 +574,7 @@ function insertMenu(index) {
 // actions
 
 function positionFor(index) {
-  const secs = store.state.sections;
+  const secs = curPage()?.sections ?? [];
   if (index <= 0) return "start";
   if (index >= secs.length) return "end";
   return "after:" + secs[index - 1].slug;
@@ -497,12 +585,13 @@ function addSection(index, kind, custom) {
     ? { kind, position: positionFor(index) }
     : { instruction: (custom ?? "").trim(), position: positionFor(index) };
   if (!kind && !params.instruction) return;
-  request("add", null, params).catch(() => {});
+  request("add", { page: curPage()?.id }, params).catch(() => {});
   setState({ openInsert: null });
 }
 
 function cutSection(slug) {
-  op({ op: "cut", slug }).then(() => {
+  const page = curPage()?.id;
+  op({ op: "cut", page, slug }).then(() => {
     setState({ selected: null, openMenu: null });
     toast(`removed ${slug}`, { label: "undo", run: () => op({ op: "undo" }).catch(() => {}) });
   }).catch(() => {});
@@ -512,7 +601,7 @@ function submitPrompt(slug) {
   const ta = openPop?.el.querySelector("textarea");
   const text = ta?.value.trim();
   if (!text) return;
-  request("instruct", { slug }, { instruction: text }).catch(() => {});
+  request("instruct", { page: curPage()?.id, slug }, { instruction: text }).catch(() => {});
   setState({ openMenu: null });
 }
 
@@ -526,27 +615,29 @@ function onStackClick(e) {
   }
   const a = b.dataset.action;
   const slug = b.dataset.slug;
+  const pg = curPage();
+  if (!pg) return;
 
   if (a === "cycle") {
-    const s = store.state.sections.find((x) => x.slug === slug);
+    const s = pg.sections.find((x) => x.slug === slug);
     const next = ((s.active + Number(b.dataset.dir)) % s.takes + s.takes) % s.takes;
-    op({ op: "pick", slug, take: next }).catch(() => {});
-  } else if (a === "compare") { window.open(`/compare/${encodeURIComponent(slug)}`, "_blank"); }
+    op({ op: "pick", page: pg.id, slug, take: next }).catch(() => {});
+  } else if (a === "compare") { window.open(`/compare/${encodeURIComponent(pg.id)}/${encodeURIComponent(slug)}`, "_blank"); }
   else if (a === "discard") {
-    const s = store.state.sections.find((x) => x.slug === slug);
+    const s = pg.sections.find((x) => x.slug === slug);
     if (!s || s.takes < 2) return;
-    op({ op: "discard", slug, take: s.active }).then(() => {
+    op({ op: "discard", page: pg.id, slug, take: s.active }).then(() => {
       toast(`discarded a take of ${slug}`, { label: "undo", run: () => op({ op: "undo" }).catch(() => {}) });
     }).catch(() => {});
-  } else if (a === "variate") { request("variate", { slug }, { count: store.variateCount }).catch(() => {}); setState({ openMenu: null }); }
-  else if (a === "steer") { request("variate", { slug }, { count: store.variateCount, steer: b.dataset.steer }).catch(() => {}); setState({ openMenu: null }); }
+  } else if (a === "variate") { request("variate", { page: pg.id, slug }, { count: store.variateCount }).catch(() => {}); setState({ openMenu: null }); }
+  else if (a === "steer") { request("variate", { page: pg.id, slug }, { count: store.variateCount, steer: b.dataset.steer }).catch(() => {}); setState({ openMenu: null }); }
   else if (a === "count") { store.variateCount = Number(b.dataset.n); localStorage.setItem("variate.count", b.dataset.n); if (openPop?.kind === "variate") refreshVariateMenu(openPop.el); for (const [, f] of frames) f.chrome.variateLabel.textContent = `variate ×${store.variateCount}`; }
-  else if (a === "menu") setState({ openMenu: openPop && openPop.slug === slug && openPop.kind === b.dataset.kind ? null : { slug, kind: b.dataset.kind }, selected: slug, openInsert: null });
-  else if (a === "sketch") { setState({ openMenu: null }); openSketch(slug, frames.get(slug)); }
+  else if (a === "menu") setState({ openMenu: openPop && openPop.key === fkey(slug) && openPop.kind === b.dataset.kind ? null : { slug, kind: b.dataset.kind }, selected: slug, openInsert: null });
+  else if (a === "sketch") { setState({ openMenu: null }); openSketch(slug, frames.get(fkey(slug))); }
   else if (a === "edit") { setState({ openMenu: null }); toggleTextEdit(slug); }
   else if (a === "prompt-go") submitPrompt(slug);
   else if (a === "fill") { const ta = openPop?.el.querySelector("textarea"); if (ta) { ta.value = b.dataset.text; ta.focus(); } }
-  else if (a === "move") op({ op: "move", slug, dir: b.dataset.dir }).catch(() => {});
+  else if (a === "move") op({ op: "move", page: pg.id, slug, dir: b.dataset.dir }).catch(() => {});
   else if (a === "cut") cutSection(slug);
   else if (a === "insert") setState({ openInsert: openInsert && openInsert.index === Number(b.dataset.index) ? null : Number(b.dataset.index), openMenu: null });
   else if (a === "add-kind") addSection(Number(b.dataset.index), b.dataset.kind, null);
@@ -557,37 +648,25 @@ function onStackClick(e) {
 // ---------------------------------------------------------------------------
 // inline text editing (no model turn): toggle contenteditable inside the frame
 
-const editing = new Set();
+const editing = new Set(); // frame keys
 function toggleTextEdit(slug) {
-  const f = frames.get(slug);
+  const key = fkey(slug);
+  const f = frames.get(key);
   if (!f) return;
-  const on = !editing.has(slug);
-  if (on) editing.add(slug); else editing.delete(slug);
+  const on = !editing.has(key);
+  if (on) editing.add(key); else editing.delete(key);
   f.wrap.classList.toggle("editing", on);
   f.iframe.contentWindow?.postMessage({ type: "rb-edit", on }, "*");
   if (on) toast(`editing ${slug}: click any text and type, then click "text" again to save`);
 }
-// receive edited markup from the frame and commit one new take
-window.addEventListener("message", (e) => {
-  const d = e.data;
-  if (!d || d.type !== "rb-edited") return;
-  for (const [slug, f] of frames) {
-    if (f.iframe.contentWindow === e.source) {
-      editing.delete(slug);
-      f.wrap.classList.remove("editing");
-      fetch("/api/text", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug, markup: d.markup }) })
-        .then((r) => r.json()).then((res) => { if (res.ok) toast(`saved your text edits to ${slug} as a new take`); }).catch(() => {});
-      return;
-    }
-  }
-});
 
 // ---------------------------------------------------------------------------
 // rail (re-render only when its signature changes)
 
-function railSignature(st) {
+function railSignature(st, pg) {
   return JSON.stringify({
-    s: st.sections.map((x) => [x.slug, x.takes, x.active, !!x.busy, x.warning ? 1 : 0, x.busy?.label ?? "", store.selected === x.slug]),
+    p: pg?.id,
+    s: (pg?.sections ?? []).map((x) => [x.slug, x.takes, x.active, !!x.busy, x.warning ? 1 : 0, x.busy?.label ?? "", store.selected === x.slug]),
     q: st.queue.map((x) => x.id + x.label),
     w: st.working.map((x) => x.id),
     d: st.recentDone.slice(0, 4).map((x) => x.id + x.result),
@@ -596,18 +675,19 @@ function railSignature(st) {
   });
 }
 
-function renderRail(st) {
-  const sig = railSignature(st);
+function renderRail(st, pg) {
+  const sig = railSignature(st, pg);
   if (sig === railSig) return;
   railSig = sig;
 
-  const extra = st.sections.reduce((n, s) => n + Math.max(0, s.takes - 1), 0);
-  const awaitCmd = `node <skill>/scripts/await.mjs --ws ${st.ws}`;
+  const secs = pg?.sections ?? [];
+  const extra = secs.reduce((n, s) => n + Math.max(0, s.takes - 1), 0);
+  const awaitCmd = `node <skill>/scripts/await.mjs --ws ${st.ws} --drain`;
 
   railA.innerHTML = `
     <div class="card">
-      <h4 class="cap">the page · ${st.sections.length} section${st.sections.length === 1 ? "" : "s"}${extra ? ` · ${extra} extra take${extra === 1 ? "" : "s"}` : ""}</h4>
-      ${st.sections.map((s) => `
+      <h4 class="cap">${esc(pg?.title ?? "the page")} · ${secs.length} section${secs.length === 1 ? "" : "s"}${extra ? ` · ${extra} extra take${extra === 1 ? "" : "s"}` : ""}</h4>
+      ${secs.map((s) => `
         <div class="rail-row ${s.busy ? "busy" : ""} ${store.selected === s.slug ? "sel" : ""}" data-hi="${esc(s.slug)}" data-action="jump" data-slug="${esc(s.slug)}">
           <span class="dot"></span>${esc(s.slug)}
           ${s.warning ? `<span title="${esc(s.warning)}">⚠</span>` : ""}
@@ -636,8 +716,8 @@ function renderRail(st) {
         <button class="action" data-action="redo" ${st.canRedo ? "" : "disabled"}>↪ redo</button>
       </div>
       <button class="action" data-action="polish" ${st.working.length ? "disabled" : ""}>Polish the seams</button>
-      <button class="action" data-action="preview">Preview the full page ↗</button>
-      <button class="action" data-action="export">Export dist/index.html</button>
+      <button class="action" data-action="preview">Preview ${esc(pg?.title ?? "the page")} ↗</button>
+      <button class="action" data-action="export">Export dist/</button>
       <button class="action primary" data-action="done" ${st.working.length ? "disabled" : ""}>Done building</button>
     </div>
 
@@ -664,17 +744,18 @@ function onRailClick(e) {
   if (!b) return;
   const a = b.dataset.action;
   const slug = b.dataset.slug;
+  const pg = curPage();
   if (a === "jump") {
     setState({ selected: slug });
-    frames.get(slug)?.wrap.scrollIntoView({ behavior: "smooth", block: "start" });
+    frames.get(fkey(slug))?.wrap.scrollIntoView({ behavior: "smooth", block: "start" });
   }
-  else if (a === "rail-up") { e.stopPropagation(); op({ op: "move", slug, dir: "up" }).catch(() => {}); }
-  else if (a === "rail-down") { e.stopPropagation(); op({ op: "move", slug, dir: "down" }).catch(() => {}); }
+  else if (a === "rail-up") { e.stopPropagation(); op({ op: "move", page: pg?.id, slug, dir: "up" }).catch(() => {}); }
+  else if (a === "rail-down") { e.stopPropagation(); op({ op: "move", page: pg?.id, slug, dir: "down" }).catch(() => {}); }
   else if (a === "rail-cut") { e.stopPropagation(); cutSection(slug); }
   else if (a === "undo") op({ op: "undo" }).catch(() => {});
   else if (a === "redo") op({ op: "redo" }).catch(() => {});
-  else if (a === "polish") { request("polish", null, {}).catch(() => {}); toast("polish queued for the agent"); }
-  else if (a === "preview") window.open("/page", "_blank");
-  else if (a === "export") fetch("/api/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then(() => toast("exported dist/index.html"));
+  else if (a === "polish") { request("polish", { page: pg?.id }, {}).catch(() => {}); toast("polish queued for the agent"); }
+  else if (a === "preview") window.open(`/page?p=${encodeURIComponent(pg?.id ?? "index")}`, "_blank");
+  else if (a === "export") fetch("/api/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then(() => toast("exported dist/ (every page, ship-ready)"));
   else if (a === "done") { request("done", null, {}).catch(() => {}); toast("told the agent you are done; it will wrap up and export"); }
 }

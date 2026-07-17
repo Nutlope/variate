@@ -9,6 +9,8 @@ node scripts/serve.mjs --ws "$WS" --port $PORT & SRV=$!
 trap 'kill $SRV 2>/dev/null || true' EXIT
 sleep 1
 J() { node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>{const j=JSON.parse(s);console.log($1)})"; }
+S() { curl -s localhost:$PORT/api/state; }
+HERO='j.pages[0].sections.find(x=>x.slug==="hero")'
 
 echo "-- drain: empty exits 2 with []"
 set +e; OUT=$(node scripts/await.mjs --ws "$WS" --drain); RC=$?; set -e
@@ -26,11 +28,11 @@ set -e
 test "$(ls "$WS"/requests/done/*.json | wc -l | tr -d ' ')" = "2"
 
 echo "-- heartbeat touched by drain (presence leaves 'away')"
-test "$(curl -s localhost:$PORT/api/state | J 'j.agent.mode')" != "away"
+test "$(S | J 'j.agent.mode')" != "away"
 
 echo "-- compare route renders picker with keep/discard"
-curl -s "localhost:$PORT/compare/hero" | grep -q 'data-keep'
-curl -s "localhost:$PORT/frame/hero?take=1&ctx=1" | grep -q 'opacity:.38'
+curl -s "localhost:$PORT/compare/index/hero" | grep -q 'data-keep'
+curl -s "localhost:$PORT/frame/index/hero?take=1&ctx=1" | grep -q 'opacity:.38'
 
 echo "-- static compare file"
 OUT=$(node scripts/compare.mjs --ws "$WS" --slug hero)
@@ -47,20 +49,20 @@ BAD="{\"name\":\"evil.sh\",\"base64\":\"$B64\"}"
 curl -s -X POST localhost:$PORT/api/asset -H 'Content-Type: application/json' -d "$BAD" | J 'j.error' | grep -q "only"
 
 echo "-- take with asset img: frame rewrites path, missing asset warns"
-cat > "$WS/site/sections/hero/take-3.html" <<'EOF'
+cat > "$WS/site/sections/index/hero/take-3.html" <<'EOF'
 <section data-rb="hero"><img src="assets/my-logo.png" alt="logo"><img src="assets/ghost.png" alt="gone"><h1>with images</h1></section>
 EOF
-node -e 'const fs=require("fs");const p=process.argv[1];const m=JSON.parse(fs.readFileSync(p));const h=m.sections.find(s=>s.slug==="hero");h.takes.push("take-3.html");h.active=h.takes.length-1;m.rev++;fs.writeFileSync(p,JSON.stringify(m,null,2)+"\n")' "$WS/site/manifest.json"
+node -e 'const fs=require("fs");const p=process.argv[1];const m=JSON.parse(fs.readFileSync(p));const h=m.pages[0].sections.find(s=>s.slug==="hero");h.takes.push("take-3.html");h.active=h.takes.length-1;m.rev++;fs.writeFileSync(p,JSON.stringify(m,null,2)+"\n")' "$WS/site/manifest.json"
 sleep 0.6
-curl -s "localhost:$PORT/frame/hero" | grep -q 'src="/assets/my-logo.png"'
-curl -s localhost:$PORT/api/state | J 'j.sections.find(x=>x.slug==="hero").warning' | grep -q "missing asset (assets/ghost.png)"
-curl -s localhost:$PORT/api/state | J 'j.sections.find(x=>x.slug==="hero").warning' | grep -vq "outside assets"
+curl -s "localhost:$PORT/frame/index/hero" | grep -q 'src="/assets/my-logo.png"'
+S | J "$HERO.warning" | grep -q "missing asset (assets/ghost.png)"
+S | J "$HERO.warning" | grep -vq "outside assets"
 
 echo "-- discard reindexes active and refuses the last take"
 curl -s -X POST localhost:$PORT/api/op -H 'Content-Type: application/json' -d '{"op":"discard","slug":"hero","take":0}' > /dev/null
-test "$(curl -s localhost:$PORT/api/state | J 'j.sections.find(x=>x.slug==="hero").takes')" = "2"
-test "$(curl -s localhost:$PORT/api/state | J 'j.sections.find(x=>x.slug==="hero").active')" = "1"
-ls "$WS/site/sections/hero" | grep -q take-1.html
+test "$(S | J "$HERO.takes")" = "2"
+test "$(S | J "$HERO.active")" = "1"
+ls "$WS/site/sections/index/hero" | grep -q take-1.html
 
 echo "-- ship-pack export: meta/OG/favicon + assets copied + relative paths kept"
 curl -s -X POST localhost:$PORT/api/export -H 'Content-Type: application/json' -d '{}' > /dev/null

@@ -71,11 +71,60 @@ export function wsPaths(ws) {
   };
 }
 
-/** Plain uncached manifest read for one-shot scripts (compare.mjs etc.). */
+/** Wrap a v1 manifest (flat sections) into the v2 shape (pages) in memory. */
+export function asV2(json) {
+  if (json && Array.isArray(json.pages)) return json;
+  if (json && Array.isArray(json.sections)) {
+    return {
+      version: 2,
+      rev: json.rev ?? 0,
+      title: json.title ?? "",
+      bodyAttrs: json.bodyAttrs ?? "",
+      pages: [{ id: "index", title: "Home", route: "index.html", sections: json.sections }],
+    };
+  }
+  return { version: 2, rev: 0, title: "", bodyAttrs: "", pages: [] };
+}
+
+/** Plain uncached manifest read for one-shot scripts (compare.mjs etc.).
+ *  Always returns the v2 shape; never writes. */
 export function loadManifest(paths) {
   const { json } = readJsonSafe(paths.MANIFEST);
-  if (json && Array.isArray(json.sections)) return json;
-  return { version: 1, rev: 0, title: "", bodyAttrs: "", sections: [] };
+  return asV2(json);
+}
+
+/**
+ * One-time disk migration v1 -> v2: sections/<slug>/ moves under
+ * sections/index/<slug>/ and the manifest gains pages[]. Idempotent (renames
+ * only happen while the source exists and the target does not) and safe to
+ * re-run after a crash. Returns true when anything changed.
+ */
+export function migrateWorkspaceV2(paths) {
+  const { json } = readJsonSafe(paths.MANIFEST);
+  if (!json || Array.isArray(json.pages)) return false; // already v2 or absent
+  if (!Array.isArray(json.sections)) return false;
+
+  const indexDir = path.join(paths.SECTIONS, "index");
+  fs.mkdirSync(indexDir, { recursive: true });
+  for (const entry of fs.readdirSync(paths.SECTIONS, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === "index") continue;
+    const from = path.join(paths.SECTIONS, entry.name);
+    const to = path.join(indexDir, entry.name);
+    if (!fs.existsSync(to)) {
+      try { fs.renameSync(from, to); } catch { /* leave for a later run */ }
+    }
+  }
+  const v2 = asV2(json);
+  v2.rev = (json.rev ?? 0) + 1;
+  atomicWrite(paths.MANIFEST, JSON.stringify(v2, null, 2) + "\n");
+  return true;
+}
+
+/** Resolve a take file path inside a page's section dir, escape-proof. */
+export function takeFilePath(paths, pageId, slug, file) {
+  const p = path.normalize(path.join(paths.SECTIONS, pageId, slug, file));
+  if (!p.startsWith(paths.SECTIONS + path.sep)) throw new Error("path escape");
+  return p;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +181,7 @@ export function buildFrameDoc(head, bodyAttrs, markup, slug, ctx = null) {
  *
  * takes: [{ label, src?, doc?, active?: boolean }]
  */
-export function buildComparePage({ title, slug, takes, live }) {
+export function buildComparePage({ title, slug, page = "index", takes, live }) {
   const frames = takes.map((t, i) => {
     const attr = t.src ? `src="${escapeAttr(t.src)}"` : `srcdoc="${escapeAttr(t.doc ?? "")}"`;
     return `<iframe id="f${i}" title="${escapeAttr(t.label)}" sandbox="allow-scripts" ${attr} loading="eager"></iframe>`;
@@ -175,7 +224,7 @@ ${frames}
 <div class="picker" id="picker"></div>
 <script>
 (function(){
-  var names=${names},cur=${activeIdx},live=${live ? "true" : "false"},slug=${JSON.stringify(slug)};
+  var names=${names},cur=${activeIdx},live=${live ? "true" : "false"},slug=${JSON.stringify(slug)},page=${JSON.stringify(page)};
   var picker=document.getElementById("picker");
   function show(i){
     cur=(i%names.length+names.length)%names.length;
@@ -197,7 +246,7 @@ ${frames}
     else if(b.dataset.discard){if(names.length<2)return;api("discard",{take:cur});}
   });
   function api(op,extra){
-    fetch("/api/op",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({op:op,slug:slug},extra))})
+    fetch("/api/op",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({op:op,slug:slug,page:page},extra))})
       .then(function(r){return r.json();}).then(function(){location.reload();}).catch(function(){});
   }
   document.addEventListener("keydown",function(e){

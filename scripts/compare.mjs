@@ -5,9 +5,9 @@
 // between their real neighbor sections, dimmed, so they are judged in
 // context.
 //
-//   node compare.mjs --ws <workspace> --slug hero [--out path.html]
+//   node compare.mjs --ws <workspace> --slug hero [--page index] [--out path.html]
 //
-// Prints the written path. Exit 1 on a missing section.
+// Prints the written path. Exit 1 on a missing page or section.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -24,24 +24,32 @@ const args = {};
 }
 
 if (!args.ws || !args.slug || args.slug === true) {
-  console.error("usage: node compare.mjs --ws <workspace> --slug <section> [--out file.html]");
+  console.error("usage: node compare.mjs --ws <workspace> --slug <section> [--page index] [--out file.html]");
   process.exit(1);
 }
 
 const P = wsPaths(String(args.ws));
 const m = loadManifest(P);
-const i = m.sections.findIndex((s) => s.slug === args.slug);
-if (i === -1) {
-  console.error(`compare.mjs: no section "${args.slug}" (have: ${m.sections.map((s) => s.slug).join(", ") || "none"})`);
+const pageId = args.page && args.page !== true ? String(args.page) : m.pages[0]?.id ?? "index";
+const pg = m.pages.find((x) => x.id === pageId);
+if (!pg) {
+  console.error(`compare.mjs: no page "${pageId}" (have: ${m.pages.map((x) => x.id).join(", ") || "none"})`);
   process.exit(1);
 }
-const sec = m.sections[i];
+const i = pg.sections.findIndex((s) => s.slug === args.slug);
+if (i === -1) {
+  console.error(`compare.mjs: no section "${args.slug}" on ${pg.id} (have: ${pg.sections.map((s) => s.slug).join(", ") || "none"})`);
+  process.exit(1);
+}
+const sec = pg.sections[i];
 const head = readSafe(P.HEAD) ?? "";
 
-const readTake = (slug, file) => readSafe(path.join(P.SECTIONS, slug, file)) ?? "";
+// Reads tolerate both layouts so a not-yet-migrated v1 workspace still works.
+const readTake = (slug, file) =>
+  readSafe(path.join(P.SECTIONS, pg.id, slug, file)) ?? readSafe(path.join(P.SECTIONS, slug, file)) ?? "";
 const activeOf = (s) => (s ? readTake(s.slug, s.takes[s.active] ?? s.takes[0]) : null);
-const prev = m.sections[i - 1] ?? null;
-const next = m.sections[i + 1] ?? null;
+const prev = pg.sections[i - 1] ?? null;
+const next = pg.sections[i + 1] ?? null;
 
 const takes = sec.takes.map((file, idx) => ({
   label: file.replace(/\.html$/, ""),
@@ -52,8 +60,8 @@ const takes = sec.takes.map((file, idx) => ({
   active: idx === sec.active,
 }));
 
-const html = buildComparePage({ title: m.title ?? "", slug: sec.slug, takes, live: false });
+const html = buildComparePage({ title: m.title ?? "", slug: sec.slug, page: pg.id, takes, live: false });
 fs.mkdirSync(P.COMPARE, { recursive: true });
-const out = args.out && args.out !== true ? path.resolve(String(args.out)) : path.join(P.COMPARE, `${sec.slug}.html`);
+const out = args.out && args.out !== true ? path.resolve(String(args.out)) : path.join(P.COMPARE, `${pg.id}-${sec.slug}.html`);
 fs.writeFileSync(out, html);
 console.log(out);

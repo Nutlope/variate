@@ -51,8 +51,9 @@ spend the effort here: everything after inherits it.
 4. Give the page a real identity: the brand's actual name when the brief
    provides one, otherwise ONE short credible name (never "Acme" or an
    obvious placeholder), plus a small original inline-SVG logo mark.
-5. Write the opening sections, each as `take-1.html` in its own dir with a
-   manifest entry: a `nav` (logo + a few links + one CTA), a `hero` composed
+5. Write the opening sections, each as `take-1.html` under
+   `site/sections/index/<slug>/` with a manifest entry on the `index` page:
+   a `nav` (logo + a few links + one CTA), a `hero` composed
    to be visually complete in the first viewport (headline in 2-3 balanced
    lines, supporting line, primary CTA, and a signature visual drawn in pure
    CSS/SVG that looks art-directed), and one or two more sections the brief
@@ -63,7 +64,7 @@ spend the effort here: everything after inherits it.
 
 Split it at the top-level `data-rb` blocks (ignore nested ones): the inner
 `<head>` content becomes `head.html`, each block becomes
-`sections/<slug>/take-1.html` (dedupe repeated slugs as `slug-2`, `slug-3`),
+`sections/index/<slug>/take-1.html` (dedupe repeated slugs as `slug-2`, `slug-3`),
 `<body>` attributes go to `bodyAttrs`, and page-level scripts that live
 outside any section fold into the LAST section's take inside its guarded
 `<script>`. A page without `data-rb` tags becomes one `page` section; offer
@@ -86,10 +87,11 @@ question per round; asking several at once is bewildering.
    colors. Five slightly tweaked card grids is wallpaper, not a round. Before
    presenting, compare your takes; if two came out alike, redraw one with an
    explicit constraint ("no card grid", "no split layout").
-3. **Show them.** Open the compare view: `/compare/<slug>` when the studio is
-   running, else `node <skill>/scripts/compare.mjs --ws <ws> --slug <slug>`
-   and open the printed file. The user flips with arrow keys; takes render
-   between their real neighbors so nothing is judged in a vacuum.
+3. **Show them.** Open the compare view: `/compare/<page>/<slug>` when the
+   studio is running, else `node <skill>/scripts/compare.mjs --ws <ws>
+   --page <page> --slug <slug>` and open the printed file. The user flips
+   with arrow keys; takes render between their real neighbors so nothing is
+   judged in a vacuum.
 4. **Ask ONE question, with your recommendation.** Name what each take is
    trying ("1 is a split manifesto, 2 is centered and quiet, 3 leads with the
    product shot...") and say which you would keep and why. Facts you can look
@@ -188,6 +190,33 @@ elements the sketch does not show, do not drop ones it does. Where a region
 carries a quoted note, use that content; where it is generic, fill it with
 the RIGHT content for this section from the page's real copy.
 `params.instruction` is a note the user added alongside. Land as a new take.
+
+## Pages (a small multi-page site)
+
+The manifest's `pages[]` array is the site map; every page shares
+`head.html` (one design system) and keeps its own sections under
+`site/sections/<page>/<slug>/`. A `page` request (or the user asking in
+chat) means: add the manifest entry `{id, title, route: "<id>.html",
+sections: []}`, then draft the page's opening in the site's established
+language: its nav (copy the index nav's take as take-1 and adjust the active
+link), a hero that says what THIS page is for, and whatever one or two
+sections the page obviously needs. Keep every page's nav and footer
+consistent: when one changes, update the others' takes to match (a polish
+pass per page is the cheap way).
+
+Cross-page links are flat: `href="index.html"`, `href="about.html"`,
+matching each page's `route`. They work in the export from disk and on any
+static host; the live `/page` preview rewrites them on the fly. Section
+anchors within a page stay `#slug`.
+
+## Content grounding (real copy beats invented copy)
+
+When the user points at something real, fetch it before writing: a URL (use
+your harness's web fetch to pull the actual copy, product names, numbers), a
+README or doc (read the file), an existing site export (see Import). Quote
+their actual claims; never pad with invented metrics, customers, or
+testimonials. When you have no source material, ask for one line about the
+product and write honest structural copy around it.
 
 ## Assets (the user's real images)
 
