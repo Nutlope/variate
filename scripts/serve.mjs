@@ -28,7 +28,9 @@ import {
 const args = parseArgs(process.argv.slice(2));
 const P = wsPaths(args.ws ?? "./variate");
 const { WS, SITE, SECTIONS, REQ, REQ_DONE, STATE_DIR, SKETCHES, ASSETS, DIST, MANIFEST, HEAD, JOURNAL, HEARTBEAT, SERVER_JSON, HISTORY } = P;
-const PORT_WANTED = Number(args.port ?? 4177);
+// Default port is a stable per-workspace hash so two projects' studios never
+// contend for one number; explicit --port always wins.
+const PORT_WANTED = args.port != null ? Number(args.port) : defaultPortFor(P.WS);
 const FORCE_POLL = !!args.poll;
 
 const UI_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "ui");
@@ -475,7 +477,32 @@ function applyAgentVerb(body) {
 
 const clients = new Set();
 
+// The done click exports eagerly, but the agent applies final verdicts in the
+// same turn it acks: re-export when a done request lands in requests/done/ so
+// dist always reflects the final state. Boot swallows historical acks.
+let ackedDoneSeen = new Set();
+let ackScanReady = false;
+
+function bootAckScan() {
+  for (const f of listDir(REQ_DONE)) if (/^\d+-done\.json$/.test(f)) ackedDoneSeen.add(f);
+  ackScanReady = true;
+}
+
+function maybeExportOnDoneAck() {
+  if (!ackScanReady) return;
+  let fresh = false;
+  for (const f of listDir(REQ_DONE)) {
+    if (!/^\d+-done\.json$/.test(f) || ackedDoneSeen.has(f)) continue;
+    ackedDoneSeen.add(f);
+    const { json } = readJsonSafe(path.join(REQ_DONE, f));
+    if (json?.result === "failed") continue; // a requeued done must not export
+    fresh = true;
+  }
+  if (fresh) writeExport(); // once per batch; dist/ and state/ are watcher-excluded, no loop
+}
+
 function broadcast() {
+  maybeExportOnDoneAck();
   const state = computeState();
   detectAgentLanding(state);
   const frame = `event: state\ndata: ${JSON.stringify(state)}\n\n`;
@@ -783,6 +810,7 @@ function listen(port, attemptsLeft) {
     bootSeq();
     bootHistory();
     bootAgentActivity();
+    bootAckScan();
     startWatcher();
     setInterval(() => {
       for (const res of clients) { try { res.write("event: ping\ndata: {}\n\n"); } catch { clients.delete(res); } }

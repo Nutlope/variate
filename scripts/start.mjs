@@ -4,13 +4,15 @@
 // any number of times. Self-describing so even an agent without skill support
 // can follow along.
 //
-//   node start.mjs [--ws ./variate] [--port 4177] [--no-open]
+//   node start.mjs [--ws ./variate] [--port <n>] [--no-open]
+//   (default port is a stable per-workspace hash in 4100-4899)
 
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { defaultPortFor } from "./core.mjs";
 
 const argv = process.argv.slice(2);
 const args = {};
@@ -21,7 +23,7 @@ for (let i = 0; i < argv.length; i++) {
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const WS = path.resolve(args.ws ?? "./variate");
-const PORT = Number(args.port ?? 4177);
+const PORT = args.port != null ? Number(args.port) : defaultPortFor(WS);
 const SERVER_JSON = path.join(WS, "state", "server.json");
 
 // ---- workspace skeleton -----------------------------------------------------
@@ -74,6 +76,13 @@ if (existing?.port) {
 }
 
 if (!live) {
+  // Say so when the wanted port is already a DIFFERENT workspace's studio:
+  // the server will walk to the next free port, and the user's old tab or
+  // bookmark would otherwise silently show the wrong project.
+  const squatter = await getState(PORT);
+  if (squatter?.ok && path.resolve(squatter.ws) !== WS) {
+    console.log(`PORT     ${PORT} is another variate studio (ws ${squatter.ws}); this one will take the next free port.`);
+  }
   const logFd = fs.openSync(path.join(WS, "state", "server.log"), "a");
   const child = spawn(process.execPath, [path.join(HERE, "serve.mjs"), "--ws", WS, "--port", String(PORT)], {
     detached: true,

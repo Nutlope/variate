@@ -15,6 +15,14 @@
 // Ack in either mode: --ack <id> [--result ok|skipped|failed] [--note "..."]
 // folds the previous fulfillment's ack into this invocation.
 //
+//   node await.mjs --ws <ws> --peek [--hook]
+//     Side-effect-free probe: counts queued and claimed-but-unfinished
+//     requests WITHOUT claiming anything, writes no heartbeat, creates no
+//     dirs. Prints {queued, working, labels} (exit 0 = something waiting,
+//     2 = idle). With --hook it instead prints a Claude Code Stop-hook
+//     {"systemMessage": ...} when work is waiting and ALWAYS exits 0
+//     (warn, never block). --ack is ignored under --peek.
+//
 // Filesystem only, no network: requests/NNNN-*.json is queued, renaming it to
 // .working claims it (atomic, so concurrent awaits race safely), moving it to
 // requests/done/ with ack fields closes it. An orphaned .working (crashed
@@ -40,6 +48,39 @@ const REQ = path.join(WS, "requests");
 const DONE = path.join(REQ, "done");
 const HEARTBEAT = path.join(WS, "state", "agent.heartbeat");
 const TIMEOUT_MS = Math.max(2, Number(args.timeout ?? 90)) * 1000;
+
+// ---- 0. peek: count without claiming, no side effects at all --------------
+if (args.peek) {
+  let queued = [], working = [];
+  try {
+    for (const f of fs.readdirSync(REQ).sort()) {
+      if (f.endsWith(".json.working")) working.push(f);
+      else if (f.endsWith(".json")) queued.push(f);
+    }
+  } catch { /* no workspace yet: idle */ }
+  // Labels come from filenames only (NNNN-type[-slug].json): torn-write-proof.
+  const labelOf = (f) => {
+    const m = f.match(/^\d+-([a-z]+)(?:-(.+?))?\.json/);
+    return m ? (m[2] ? `${m[1]} ${m[2]}` : m[1]) : f;
+  };
+  const labels = [...queued, ...working].map(labelOf).slice(0, 8);
+  const n = queued.length + working.length;
+  if (args.hook) {
+    // Stop-hook mode: warn, never block, never fail the hook.
+    if (!n) process.exit(0);
+    process.stdout.write(JSON.stringify({
+      systemMessage:
+        `variate: ${queued.length} queued studio request${queued.length === 1 ? "" : "s"}` +
+        (working.length ? ` + ${working.length} claimed but unfinished` : "") +
+        ` (${labels.join(", ")}) - drain before stopping: node ${process.argv[1]} --ws ${WS} --drain`,
+    }) + "\n", () => process.exit(0));
+  } else {
+    out({ queued: queued.length, working: working.length, labels }, n ? 0 : 2);
+  }
+  // out()/write exit in the stdout flush callback; hold here so execution
+  // never falls through into the claiming paths below.
+  await new Promise(() => {});
+}
 
 if (!fs.existsSync(REQ)) { console.error(`await.mjs: no requests/ under ${WS}. Run start.mjs first.`); process.exit(1); }
 fs.mkdirSync(DONE, { recursive: true });
