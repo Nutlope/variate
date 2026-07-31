@@ -722,9 +722,10 @@ function renderRail(st, pg) {
     </div>
 
     <div class="card">
-      <div class="presence ${st.agent.mode === "standing-by" ? "on" : st.agent.mode === "terminal" ? "mid" : ""}">
+      <div class="presence ${st.agent.mode === "standing-by" ? "on" : st.agent.mode === "working" || st.agent.mode === "terminal" ? "mid" : ""}">
         <span class="dot"></span>${
           st.agent.mode === "standing-by" ? "agent standing by"
+          : st.agent.mode === "working" ? "agent working · changes are landing"
           : st.agent.mode === "terminal" ? "agent in terminal mode · clicks land on its next turn"
           : "agent not connected"}
       </div>

@@ -209,6 +209,20 @@ function recentDone(n = 6) {
 
 const START_TOKEN = Date.now();
 
+// Agent activity (landings via /api/agent or detected manifest writes) feeds
+// the "working" presence state, so long generation turns without a drain
+// heartbeat no longer read as "not connected".
+let lastAgentActivity = null; // ms epoch
+function markAgentActivity() { lastAgentActivity = Date.now(); }
+function bootAgentActivity() {
+  for (const e of loadJournalTail(200)) {
+    if (e.actor === "agent") {
+      const t = Date.parse(e.ts);
+      if (t) lastAgentActivity = t;
+    }
+  }
+}
+
 function computeState() {
   const manifest = readManifest();
   const head = readSafe(HEAD) ?? "";
@@ -238,10 +252,16 @@ function computeState() {
 
   const hb = statMtime(HEARTBEAT);
   const hbAge = hb != null ? Date.now() - hb : Infinity;
-  // Three presence states: a blocked await beats every 5s ("standing-by"); a
-  // terminal-mode agent only beats at drain moments ("terminal", clicks land
-  // on its next turn); anything older is "away".
-  const agentMode = hbAge < 15000 ? "standing-by" : hbAge < 300000 ? "terminal" : "away";
+  const actAge = lastAgentActivity != null ? Date.now() - lastAgentActivity : Infinity;
+  // Presence ladder: a blocked await beats every 5s ("standing-by"); recent
+  // landings mean a turn is in flight ("working", threshold long because
+  // landings are per-turn-sparse); a drain beat without landings is
+  // "terminal" (clicks land on its next turn); anything older is "away".
+  const agentMode =
+    hbAge < 15000 ? "standing-by"
+    : actAge < 600000 ? "working"
+    : hbAge < 300000 ? "terminal"
+    : "away";
   return {
     ok: true,
     ws: WS,
@@ -256,7 +276,7 @@ function computeState() {
     activity: loadJournalTail(50).map(({ manifest: _m, ...rest }) => rest).reverse(),
     canUndo: undoStack.length > 0,
     canRedo: redoStack.length > 0,
-    agent: { listening: agentMode === "standing-by", mode: agentMode, lastSeen: hb },
+    agent: { listening: agentMode === "standing-by", mode: agentMode, lastSeen: Math.max(hb ?? 0, lastAgentActivity ?? 0) || null, lastActivity: lastAgentActivity },
     manifestError,
     empty: manifest.pages.every((pg) => pg.sections.length === 0),
   };
@@ -361,6 +381,41 @@ function patchHeadTokens(tokens) {
   return { ok: true, changed };
 }
 
+/**
+ * Land a take: write the file, register it in the manifest, journal with a
+ * real label. The agent-facing single-writer path (/api/agent) and inline
+ * text edits both come through here.
+ *
+ * Concurrency invariant: synchronous end-to-end, no await between the
+ * manifest read and write. Node serializes concurrent /api/agent posts at
+ * the event loop, so parallel lands into one section each get a distinct
+ * take number and registration. File is written FIRST: a crash between
+ * leaves an orphan take file (invisible; numbering skips past it), never a
+ * manifest entry pointing at a missing file.
+ */
+function landTake({ pageId, slug, markup, create = null, activate = false, label = null, actor = "agent", op = "landed" }) {
+  slug = String(slug ?? "");
+  if (!slug || slug !== normalizeSlug(slug)) return { error: `bad slug "${slug}"${slug ? ` (try "${normalizeSlug(slug)}")` : ""}` };
+  const m = readManifest();
+  const resolvedPage = pageId ?? m.pages[0]?.id;
+  if (!resolvedPage) return { error: "no pages in the manifest yet" };
+  const before = JSON.stringify(m);
+  const { dir, n } = nextTakeNumber(SECTIONS, resolvedPage, slug);
+  const file = `take-${n}.html`;
+  const normalized = normalizeTake(markup, slug);
+  fs.writeFileSync(path.join(dir, file), normalized + "\n");
+  const reg = registerTake(m, resolvedPage, slug, file, { create, activate });
+  if (reg.error) return reg;
+  const finalLabel = label ? String(label).slice(0, 140).replace(/\n/g, " ") : manifestDiffLabel(JSON.parse(before), m);
+  commitOp(before, m, op, finalLabel, actor);
+  if (actor === "agent") markAgentActivity();
+  return {
+    ok: true, page: resolvedPage, slug, file, take: n, index: reg.index,
+    active: reg.section.active === reg.index, rev: m.rev,
+    warnings: validateTake(normalized, ASSETS), warning: reg.warning ?? null, label: finalLabel,
+  };
+}
+
 /** Commit inline-edited section markup as a new immutable take. */
 function writeTextTake(pageId, slug, markup) {
   const m = readManifest();
@@ -368,17 +423,51 @@ function writeTextTake(pageId, slug, markup) {
   if (!pg) return { error: `no page "${pageId}"` };
   const sec = pg.sections.find((s) => s.slug === slug);
   if (!sec) return { error: `no section "${slug}" on ${pg.id}` };
-  const dir = path.join(SECTIONS, pg.id, slug);
-  fs.mkdirSync(dir, { recursive: true });
-  const ns = fs.readdirSync(dir).map((f) => Number(f.match(/take-(\d+)\.html/)?.[1] ?? 0));
-  const n = Math.max(0, ...ns) + 1;
-  const file = `take-${n}.html`;
-  fs.writeFileSync(path.join(dir, file), normalizeTake(markup, slug) + "\n");
-  const before = JSON.stringify(m);
-  sec.takes.push(file);
-  sec.active = sec.takes.length - 1;
-  commitOp(before, m, "text", `edited text in ${slug}${pg.id === "index" ? "" : ` on ${pg.id}`}`);
-  return { ok: true, take: n };
+  const out = landTake({
+    pageId: pg.id, slug, markup, activate: true, actor: "user", op: "text",
+    label: `edited text in ${slug}${pg.id === "index" ? "" : ` on ${pg.id}`}`,
+  });
+  return out.error ? out : { ok: true, take: out.take };
+}
+
+/** The agent CLI's verbs (land.mjs routes here when the studio is up). */
+function applyAgentVerb(body) {
+  const verb = body?.verb;
+  if (verb === "land") {
+    return landTake({
+      pageId: body.page, slug: body.slug, markup: String(body.markup ?? ""),
+      create: body.create ?? null, activate: !!body.activate, label: body.label ?? null, actor: "agent",
+    });
+  }
+  if (verb === "pick" || verb === "discard") {
+    const m = readManifest();
+    const pg = pageOf(m, body.page ?? m.pages[0]?.id);
+    if (!pg) return { error: `no page "${body.page}"` };
+    const sec = pg.sections.find((s) => s.slug === body.slug);
+    if (!sec) return { error: `no section "${body.slug}" on ${pg.id}` };
+    const idx = sec.takes.indexOf(body.file);
+    if (idx === -1) return { error: `"${body.file}" is not in ${body.slug}'s pager (have: ${sec.takes.join(", ")})` };
+    const out = applyOp({ op: verb, page: pg.id, slug: body.slug, take: idx }, "agent");
+    if (!out.error) markAgentActivity();
+    return out;
+  }
+  if (verb === "move" || verb === "cut") {
+    const out = applyOp({ op: verb, page: body.page, slug: body.slug, dir: body.dir, to: body.to }, "agent");
+    if (!out.error) markAgentActivity();
+    return out;
+  }
+  if (verb === "page") {
+    if (!String(body.id ?? "").trim()) return { error: "page id required" };
+    const m = readManifest();
+    const id = normalizeSlug(body.id);
+    if (m.pages.some((p) => p.id === id)) return { ok: true, existed: true, id };
+    const before = JSON.stringify(m);
+    m.pages.push({ id, title: body.title ?? id, route: /\.html$/.test(body.route ?? "") ? body.route : `${id}.html`, sections: [] });
+    commitOp(before, m, "page", manifestDiffLabel(JSON.parse(before), m), "agent");
+    markAgentActivity();
+    return { ok: true, id, rev: m.rev };
+  }
+  return { error: `unknown verb "${verb}"` };
 }
 
 // ---------------------------------------------------------------------------
@@ -406,13 +495,24 @@ function detectAgentLanding() {
   if (cameFromServer) return;
   try {
     const m = JSON.parse(raw);
+    markAgentActivity();
+    // A land.mjs fs-mode write already journaled this change itself; take
+    // its entry (and seq) instead of journaling the same manifest twice.
+    const tail = loadJournalTail(1)[0];
+    if (tail?.actor === "agent" && tail.manifest && JSON.stringify(m) === JSON.stringify(tail.manifest)) {
+      journalSeq = Math.max(journalSeq, tail.seq ?? journalSeq);
+      lastJournalEntry = tail;
+      undoStack.push(prev);
+      if (undoStack.length > 60) undoStack.shift();
+      redoStack = [];
+      saveHistory();
+      return;
+    }
     undoStack.push(prev);
     if (undoStack.length > 60) undoStack.shift();
     redoStack = [];
     saveHistory();
-    // Generic on purpose: in terminal mode the agent applies picks, moves,
-    // and new takes by editing the manifest directly.
-    appendJournal("agent", "landed", "the agent updated the page", m);
+    appendJournal("agent", "landed", manifestDiffLabel(JSON.parse(prev), m), m);
   } catch { /* torn write; next tick settles it */ }
 }
 
@@ -617,6 +717,14 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, out.error ? 400 : 200, out);
       }
 
+      if (p === "/api/agent") {
+        // land.mjs routes through here when the studio is up: the server is
+        // the single manifest writer, so parallel lands cannot collide.
+        const out = applyAgentVerb(body);
+        broadcast();
+        return sendJson(res, out.error ? 400 : 200, out);
+      }
+
       if (p === "/api/export") {
         const file = writeExport();
         broadcast();
@@ -674,6 +782,7 @@ function listen(port, attemptsLeft) {
     lastObservedManifestJson = readSafe(MANIFEST)?.trim() ?? null;
     bootSeq();
     bootHistory();
+    bootAgentActivity();
     startWatcher();
     setInterval(() => {
       for (const res of clients) { try { res.write("event: ping\ndata: {}\n\n"); } catch { clients.delete(res); } }
