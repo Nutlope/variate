@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ember, kiln-fired ceramics</title>
+<style>
+  :root{
+    --paper:#f6f3ec; --ink:#1a1815; --mut:#6d675c; --line:#e0dacd; --accent:#b4451f;
+    --serif: "Iowan Old Style", Georgia, serif;
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.6}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 28px}
+  nav{display:flex;align-items:center;justify-content:space-between;padding:22px 0;border-bottom:1px solid var(--line)}
+  nav b{font-family:var(--serif);font-size:19px;letter-spacing:-.01em}
+  nav a{color:var(--mut);text-decoration:none;font-size:14px;margin-left:22px}
+  section{padding:96px 0;border-bottom:1px solid var(--line)}
+  h1{font-family:var(--serif);font-size:clamp(2.6rem,6vw,4.4rem);line-height:1.03;letter-spacing:-.02em;max-width:16ch}
+  h2{font-family:var(--serif);font-size:clamp(1.6rem,3vw,2.3rem);letter-spacing:-.01em}
+  p.lead{font-size:1.12rem;color:var(--mut);max-width:52ch;margin-top:20px}
+  .btn{display:inline-block;margin-top:28px;background:var(--ink);color:var(--paper);padding:13px 22px;border-radius:7px;text-decoration:none;font-size:15px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:26px;margin-top:38px}
+  .card{border:1px solid var(--line);border-radius:12px;padding:22px;background:#fffdf8}
+  .card h3{font-family:var(--serif);font-size:1.12rem;margin-bottom:6px}
+  .card p{color:var(--mut);font-size:.95rem}
+  footer{padding:44px 0;color:var(--mut);font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav><b>Ember</b><span><a href="#">Work</a><a href="#">Kiln</a><a href="#">Contact</a></span></nav>
+
+  <section data-variate-section="hero">
+    <h1>Pots that remember the fire that made them.</h1>
+    <p class="lead">Wood-fired stoneware from a two-person studio in the Atlas foothills. Every piece carries the ash it was buried in.</p>
+    <a class="btn" href="#">See this season</a>
+  </section>
+
+  <section data-variate-section="features">
+    <h2>How we work</h2>
+    <div class="grid">
+      <div class="card"><h3>Local clay</h3><p>Dug within forty kilometres, rested a year before it is thrown.</p></div>
+      <div class="card"><h3>One firing</h3><p>Four days in the wood kiln. The flame path is the decoration.</p></div>
+      <div class="card"><h3>No two alike</h3><p>Ash lands where it lands, so each piece leaves the kiln its own.</p></div>
+    </div>
+  </section>
+
+  <footer>Ember Ceramics, Ourika Valley</footer>
+
+</div>
+<!-- variate:begin -->
+<script src="http://127.0.0.1:4177/v.js"></script>
+<!-- variate:end -->
+</body>
+</html>
