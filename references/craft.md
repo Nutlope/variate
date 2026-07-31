@@ -111,11 +111,14 @@ architecture: follow whatever the target file already does. If it uses utility
 classes, use theirs. If it imports a stylesheet or a CSS module, put your rules
 there only if that file belongs to this component alone. If the target relies
 on class names that live in some global stylesheet you must not touch, keep
-each variant self-contained with one scoped `<style>` block inside the file
-(or the framework's scoped-style equivalent). Never create a new shared
-stylesheet, and never make one variant depend on a file another variant
-introduced: each one has to work the moment it is copied over the target, on
-its own.
+each variant self-contained with its styles inside the file: `<style scoped>`
+in Vue or Svelte, a `<style>` block in Astro, and in React or plain JSX a
+`<style>` element whose every selector is prefixed with a class unique to that
+variant (`.v2-row`, `.v3-rail`). React has no scoping, so without that prefix
+two variants of the same set will collide the moment they reuse a class name.
+Never create a new shared stylesheet, and never make one variant depend on a
+file another variant introduced: each one has to work the moment it is copied
+over the target, on its own.
 
 ## When there is nothing to vary yet
 

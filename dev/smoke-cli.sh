@@ -91,6 +91,7 @@ node "$V" add "$CODE/src/components/Hero.jsx" --root "$CODE" > /dev/null
 # even though the variant file itself sits in .variate/
 printf 'import { Button } from "./Button";\nexport function Hero(){ return Button }\n' > "$CODE/.variate/hero/2.jsx"
 node "$V" check hero --root "$CODE" | grep -q "no warnings"
+node "$V" check hero --root "$CODE" | grep -q "NOT parsed"
 # ...and one that would genuinely fail to build must warn
 printf 'import { Nope } from "./Nope";\nimport c from "party-parrot";\nexport function Hero(){ return [Nope, c] }\n' > "$CODE/.variate/hero/3.jsx"
 node "$V" check hero --root "$CODE" | grep -q 'does not resolve'

@@ -95,7 +95,11 @@ is never destroyed, which is why nothing in this tool asks "are you sure".
 
 1. **Resolve the target.** A component, a page, a layout, a theme or CSS file:
    anything that is one file. If the card sent you a selection, its `text` is
-   the visible copy of what the user clicked, so grep the repo for it.
+   the visible copy of what the user clicked, so grep the repo for it. From a
+   phrase ("the pricing section"), grep for the words a user would see on the
+   page rather than for filenames, and when more than one file could be it,
+   name the candidates and ask rather than guessing: a round on the wrong file
+   wastes the whole turn.
 2. **Read the substrate before you draft.** This is what makes the variants
    look like their app instead of generic output:
    - their design tokens (Tailwind `@theme` block, `:root` custom properties,
@@ -134,8 +138,10 @@ already says so. Log the decision in your reply.
 The best feedback is compositional. "2's layout with 4's stat strip" IS the
 design: draw it as the next position rather than arguing.
 
-"More like 3, but calmer" is a new round on the same set: keep the numbering
-going, add positions, tell them the new range.
+"More like 3, but calmer" is a new round on the same set. **Extending a set
+needs no command**: write the next numbered file (`5.tsx` after `4.tsx`) and
+append its direction to `plan.json`. The pager picks it up. Tell them the new
+range and what you added.
 
 ## What the user does without you
 
@@ -168,11 +174,15 @@ If their stack is not detected, `up` prints the tag for them to paste;
 
 ## Look at what you made
 
-1. Fix everything `check` reports before you present.
+1. Fix everything `check` reports before you present. Read its last line: it
+   says what it actually examined, and whether it was able to parse anything.
 2. If your harness can open a page, look at the live one at desktop and at
    about 390px. One pass per round, not one per variant.
 3. If the dev server logs an error after a switch, that variant is broken:
    switch back to 1 and fix it before saying anything.
+4. **If their dev server is not running, say so in the handoff.** Switching
+   still rewrites the real file, so the work is real, but they will see nothing
+   until they start it. Do not start it for them unless they ask.
 
 ## Optional: a Stop hook so clicks are never missed
 

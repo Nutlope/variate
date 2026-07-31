@@ -22,7 +22,7 @@ import {
   readSafe, readJsonSafe, atomicWrite,
 } from "./src/core.mjs";
 import { detect, attach, detach, isAttached, ignoreLine, unignoreLine, snippetFor } from "./src/attach.mjs";
-import { checkSet } from "./src/check.mjs";
+import { checkSet, parserFor } from "./src/check.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const VERSION = "3.0.0";
@@ -150,10 +150,10 @@ async function cmdUp() {
 
   key("VARIATE", `up on http://127.0.0.1:${port}  ·  root ${P.ROOT}`);
   if (attached) key("TAG", `${attached.file}  (dev only, marker-bracketed; \`variate end\` removes it)`);
-  key("SETS", sets.length ? sets.map((s) => `${s.name} ${s.at ?? "?"}/${s.n}`).join(" · ") : "none yet");
+  key("SETS", sets.length ? sets.map((s) => `${s.name} on ${s.at ?? "?"} of ${s.n}`).join(" · ") : "none yet");
   key("NEXT", sets.length
     ? "flip variants on your page: ← →, or 1-9"
-    : `node ${path.join(HERE, "variate.mjs")} add <a component or page file>`);
+    : `node ${path.join(HERE, "variate.mjs")} add <a component or page file> --root ${P.ROOT}`);
   key("KEYS", "← → flip · 1-9 jump · [ ] section · esc hide · ? help");
   if (ig.added) key("IGNORE", "added .variate/ to .gitignore");
   process.exit(already ? 2 : 0);
@@ -210,6 +210,7 @@ function cmdAdd() {
   key("SLOT 1", `your file as it is now (${(fs.statSync(abs).size / 1024).toFixed(1)} KB), never edited`);
   key("WRITE", `${path.relative(P.ROOT, dir)}/plan.json  then  ${[...Array(Math.max(0, n - 1))].map((_, i) => `${i + 2}${ext}`).join("  ")}`);
   key("CARD", `the pager grows to ${n} as each file lands; the page changes only when you switch`);
+  key("MORE", `to extend this round later, write ${n + 1}${ext} and append its direction to plan.json. No command needed.`);
   if (!referenced(abs)) {
     key("HEED", "nothing in this project seems to import that file, so the user may not see it on their page");
   }
@@ -249,7 +250,11 @@ function cmdCheck() {
       out(`${s.name} ${r.n}${" ".repeat(Math.max(1, 9 - String(s.name).length - String(r.n).length))}${r.warnings.join("; ")}`);
     }
   }
-  if (!warned) key("CHECK", `${names.length} set${names.length === 1 ? "" : "s"}, no warnings`);
+  // Say what was actually examined: "no warnings" must never read as "it builds".
+  const scope = parserFor(P)
+    ? "parsed with your esbuild, plus imports, exports and house style"
+    : "imports, exports and house style; NOT parsed (no parser in this project, so run your own build)";
+  key("CHECK", `${names.length} set${names.length === 1 ? "" : "s"}${warned ? "" : ", no warnings"}  ·  ${scope}`);
   process.exit(0);
 }
 
@@ -266,7 +271,7 @@ async function cmdStatus() {
   key("TAG", att?.file ? `${att.file}${isAttached(P.ROOT, att.file) ? "" : "  (MISSING: run variate up)"}` : "not attached");
   if (!sets.length) key("SETS", "none");
   for (const s of sets) {
-    key(s.name, `${s.at ?? "?"}/${s.n}  ${s.targetRel}${s.at == null ? "  (hand-edited; the next switch keeps it)" : ""}`);
+    key(s.name, `on ${s.at ?? "?"} of ${s.n}  ·  ${s.targetRel}${s.at == null ? "  (hand-edited; the next switch keeps it)" : ""}`);
   }
   process.exit(sets.length ? 0 : 2);
 }

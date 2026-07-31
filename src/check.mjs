@@ -6,6 +6,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { readSafe } from "./core.mjs";
 
 const exportsOf = (src) => {
@@ -87,6 +88,28 @@ export function checkVariant(P, set, variant, baselineSrc, deps) {
   return { n: variant.n, warnings: w };
 }
 
+/**
+ * A real parse, if the project happens to own a parser. esbuild is in most
+ * front-end projects already and handles jsx/tsx; when it is absent we say so
+ * rather than letting "no warnings" imply the file compiles.
+ */
+export function parserFor(P) {
+  for (const rel of ["node_modules/.bin/esbuild", "node_modules/esbuild/bin/esbuild"]) {
+    const bin = path.join(P.ROOT, rel);
+    if (fs.existsSync(bin)) return { kind: "esbuild", bin };
+  }
+  return null;
+}
+
+function parseWith(parser, file, ext) {
+  const loader = { ".jsx": "jsx", ".tsx": "tsx", ".ts": "ts", ".mjs": "js", ".js": "js", ".cjs": "js" }[ext.toLowerCase()];
+  if (!loader) return null;
+  const r = spawnSync(parser.bin, [file, `--loader:${ext}=${loader}`, "--outfile=/dev/null"], { encoding: "utf8" });
+  if (r.status === 0) return null;
+  const first = String(r.stderr || "").split("\n").find((l) => /error/i.test(l)) ?? "does not parse";
+  return first.replace(/^.*?error:\s*/i, "").trim().slice(0, 120);
+}
+
 export function checkSet(P, set) {
   const baselineSrc = set.variants[0] ? readSafe(set.variants[0].file) : null;
   let deps = null;
@@ -97,5 +120,13 @@ export function checkSet(P, set) {
       deps = new Set([...Object.keys(j.dependencies ?? {}), ...Object.keys(j.devDependencies ?? {}), ...Object.keys(j.peerDependencies ?? {})]);
     } catch { /* no dep check */ }
   }
-  return set.variants.slice(1).map((v) => checkVariant(P, set, v, baselineSrc, deps));
+  const parser = parserFor(P);
+  return set.variants.slice(1).map((v) => {
+    const row = checkVariant(P, set, v, baselineSrc, deps);
+    if (parser) {
+      const err = parseWith(parser, v.file, set.ext);
+      if (err) row.warnings.unshift(`does not parse: ${err}`);
+    }
+    return row;
+  });
 }
