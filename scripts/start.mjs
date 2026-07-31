@@ -125,5 +125,6 @@ console.log(empty
   : `PAGES    ${pages.map((pg) => `${pg.id} (${(pg.sections ?? []).map((s) => s.slug).join(", ") || "empty"})`).join(" · ")}. Read site/DECISIONS.md for the design tree so far.`);
 console.log(`MODE     terminal-first: talk with the user, edit the workspace files directly, and between turns fold in studio clicks with:`);
 console.log(`DRAIN    node ${path.join(HERE, "await.mjs")} --ws ${WS} --drain   (prints queued studio requests as a JSON array; exit 2 = none; never blocks)`);
+console.log(`LAND     node ${path.join(HERE, "land.mjs")} land --ws ${WS} --slug <s> [--create] [--activate] [--label "..."]   take markup on stdin; also: check | pick | discard | move | cut | page. Never hand-edit the manifest.`);
 console.log(`STUDIO-MODE  only if the user says they want to click instead of talk: node ${path.join(HERE, "await.mjs")} --ws ${WS}   (blocks for one request; ack with --ack <id> --note "...")`);
 console.log(`COMPARE  node ${path.join(HERE, "compare.mjs")} --ws ${WS} --slug <section>   writes a static side-by-side picker page for a design round.`);

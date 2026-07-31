@@ -404,8 +404,12 @@ ${frames}
     render();
   }
   function render(){
+    // Options are numbered by PAGER POSITION; the underlying file name is a
+    // tooltip only. Positions are how takes are discussed (file numbers drift
+    // when takes are pulled), so the picker must never present file names as
+    // the primary identity.
     var h='<button data-go="-1" aria-label="previous">&#8249;</button>';
-    for(var i=0;i<names.length;i++){h+='<button data-i="'+i+'" class="'+(i===cur?"on":"")+'">'+(i+1)+" · "+names[i]+"</button>";}
+    for(var i=0;i<names.length;i++){h+='<button data-i="'+i+'" title="'+names[i]+'" class="'+(i===cur?"on":"")+'">'+(i+1)+"</button>";}
     h+='<button data-go="1" aria-label="next">&#8250;</button>';
     if(live){h+='<button class="act keep" data-keep="1">keep this</button><button class="act" data-discard="1">discard</button>';}
     picker.innerHTML=h;

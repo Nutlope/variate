@@ -51,13 +51,16 @@ spend the effort here: everything after inherits it.
 4. Give the page a real identity: the brand's actual name when the brief
    provides one, otherwise ONE short credible name (never "Acme" or an
    obvious placeholder), plus a small original inline-SVG logo mark.
-5. Write the opening sections, each as `take-1.html` under
-   `site/sections/index/<slug>/` with a manifest entry on the `index` page:
-   a `nav` (logo + a few links + one CTA), a `hero` composed
-   to be visually complete in the first viewport (headline in 2-3 balanced
-   lines, supporting line, primary CTA, and a signature visual drawn in pure
-   CSS/SVG that looks art-directed), and one or two more sections the brief
-   deserves. Set `title` in the manifest. Bump `rev`.
+5. Land the opening sections PROGRESSIVELY so the user watches the page
+   appear instead of waiting on a big bang: first the `nav` (logo + a few
+   links + one CTA) and the `hero` (composed to be visually complete in the
+   first viewport: headline in 2-3 balanced lines, supporting line, primary
+   CTA, and a signature visual drawn in pure CSS/SVG that looks
+   art-directed), each landed with
+   `land.mjs land --slug <s> --create --activate --label "..."`, and tell
+   the user the studio is live. THEN land the one or two more sections the
+   brief deserves. The site's name lives in head.html's `<title>`; the
+   studio picks it up from there.
 6. Tell the user the studio URL and what you drew.
 
 ## Import (the user points you at an existing single-file page)
@@ -84,25 +87,35 @@ question per round; asking several at once is bewildering.
 2. **Draft 5 takes for exploration rounds** (2 or 3 for late fine-tuning).
    They must be STRUCTURALLY different: different layout, different
    information hierarchy, different primary affordance, not just different
-   colors. Five slightly tweaked card grids is wallpaper, not a round. Before
-   presenting, compare your takes; if two came out alike, redraw one with an
-   explicit constraint ("no card grid", "no split layout").
+   colors. Five slightly tweaked card grids is wallpaper, not a round.
+   If your harness runs parallel subagents, draft the takes IN PARALLEL:
+   one subagent per take, each given the head, the neighbors, and an
+   explicit divergence constraint ("no card grid", "split layout", "type
+   only"), each landing its own take via land.mjs (parallel-safe; takes
+   stream into the pager as they finish). Sequential is always correct too.
+   Per take, the order is draft, `check`, fix, `land`: a landed take is
+   immutable, so it must be right BEFORE it enters the pager, not pruned
+   after. Before presenting, compare your takes; if two came out alike,
+   redraw one with an explicit constraint.
 3. **Show them.** Open the compare view: `/compare/<page>/<slug>` when the
    studio is running, else `node <skill>/scripts/compare.mjs --ws <ws>
    --page <page> --slug <slug>` and open the printed file. The user flips
    with arrow keys; takes render between their real neighbors so nothing is
    judged in a vacuum.
-4. **Ask ONE question, with your recommendation.** Name what each take is
-   trying ("1 is a split manifesto, 2 is centered and quiet, 3 leads with the
-   product shot...") and say which you would keep and why. Facts you can look
-   up yourself; the decision is the user's. Do not proceed without it.
+4. **Ask ONE question, with your recommendation.** Number the options by
+   PAGER POSITION exactly as the compare picker shows them ("1 is a split
+   manifesto, 2 is centered and quiet, 3 leads with the product shot...");
+   never use take file names with the user (file numbers drift when takes
+   are discarded). Say which you would keep and why. Facts you can look up
+   yourself; the decision is the user's. Do not proceed without it.
 5. **Apply the verdict.** The best feedback is compositional: "2's layout
    with 4's stat strip" IS the design, so draw that merged take next and make
    it active. A plain pick means set it active and move on.
-6. **Log and prune.** Append the round to `site/DECISIONS.md` (question,
-   takes offered, verdict, why). Discard the rejected takes (edit the
-   manifest, or the user clicks discard) unless the user wants them kept.
-   Then zoom in: next round, one level deeper.
+6. **Log and prune.** Append the round to `site/DECISIONS.md`: question,
+   options in pager order WITH their take files ("2 = take-6.html"),
+   verdict, why. Discard the rejected takes (`land.mjs discard --take <N>`,
+   or the user clicks discard) unless the user wants them kept. Then zoom
+   in: next round, one level deeper.
 
 `site/DECISIONS.md` is the design tree's memory. Read it at session start;
 without it, a fresh session re-litigates settled decisions.
@@ -117,12 +130,13 @@ dir first; yours must be clearly different from all of them. It must still
 sit perfectly between its neighbors (read them for seams) and read as the
 same designer's work.
 
-`params.count` > 1: write each take as its own file, updating the manifest
-after EACH so takes land in the studio one by one. Make each take claim a
-different corner of the idea space: a different alignment axis, density, or
-visual device than the obvious first idea. Set `active` to your FIRST new
-take; later ones stack behind the pager. (If your harness can run parallel
-subagents safely, you may parallelize, but sequential is always correct.)
+`params.count` > 1: land each take as its own file the moment it is checked
+(`land.mjs` is parallel-safe), so takes appear in the studio one by one. Make
+each take claim a different corner of the idea space: a different alignment
+axis, density, or visual device than the obvious first idea. Pass
+`--activate` on your FIRST new take only; later ones stack behind the pager.
+If your harness runs parallel subagents, one subagent per take with an
+explicit divergence constraint each; sequential is always correct too.
 
 `params.steer` bends every take in the batch, strictly within the page's
 design language; it bends the takes, never the brand:
@@ -143,11 +157,11 @@ dropped. Land the result as a NEW take (the old one stays in the pager).
 ## Add
 
 Design a brand-new section to sit at `params.position` (`start`, `end`, or
-`after:<slug>`; if that slug was cut in the meantime, fall back to `end`).
-Create the dir, write `take-1.html`, and splice the manifest entry at the
-position. Slug: the kind's canonical slug below, deduped with `-2`, `-3` if
-taken. Match the page's design language exactly and make the seams flow into
-both neighbors. Kind briefs:
+`after:<slug>`; a slug cut in the meantime falls back to `end` on its own).
+Land it with `land.mjs land --slug <s> --create --position <p> --activate`.
+Slug: the kind's canonical slug below, deduped with `-2`, `-3` if taken.
+Match the page's design language exactly and make the seams flow into both
+neighbors. Kind briefs:
 
 - features (slug `features`): the product's real capabilities from the page's
   own copy, each with a small inline-SVG glyph drawn in the page's style
@@ -196,13 +210,12 @@ the RIGHT content for this section from the page's real copy.
 The manifest's `pages[]` array is the site map; every page shares
 `head.html` (one design system) and keeps its own sections under
 `site/sections/<page>/<slug>/`. A `page` request (or the user asking in
-chat) means: add the manifest entry `{id, title, route: "<id>.html",
-sections: []}`, then draft the page's opening in the site's established
-language: its nav (copy the index nav's take as take-1 and adjust the active
-link), a hero that says what THIS page is for, and whatever one or two
-sections the page obviously needs. Keep every page's nav and footer
-consistent: when one changes, update the others' takes to match (a polish
-pass per page is the cheap way).
+chat) means: `land.mjs page --id <id> --title "<T>"`, then draft the page's
+opening in the site's established language: its nav (copy the index nav's
+markup and adjust the active link, landed with `--create`), a hero that says
+what THIS page is for, and whatever one or two sections the page obviously
+needs. Keep every page's nav and footer consistent: when one changes, land
+matching takes on the others (a polish pass per page is the cheap way).
 
 Cross-page links are flat: `href="index.html"`, `href="about.html"`,
 matching each page's `route`. They work in the export from disk and on any
@@ -251,4 +264,5 @@ head.html changed (server undo cannot restore it; git can).
   before I got to it"`.
 - Malformed or impossible ask: fulfill the closest sensible reading; only
   `--result failed` when you truly cannot.
-- Never edit `requests/`, never edit existing takes, never delete take files.
+- Never edit `requests/`, never edit existing takes, never delete take files,
+  never hand-edit `site/manifest.json` (land.mjs is your only pen for it).

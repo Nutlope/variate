@@ -17,5 +17,6 @@ the loop rules and `references/recipes.md` for the craft contract before
 fulfilling requests.
 
 Never edit files under `requests/` directly, never edit or delete existing
-`take-*.html` files (always add a new take), and re-read `site/manifest.json`
-before every write.
+`take-*.html` files (always land a new take), and never hand-edit
+`site/manifest.json`: every mutation goes through `scripts/land.mjs`
+(verbs: land, check, pick, discard, move, cut, page; it prints usage).

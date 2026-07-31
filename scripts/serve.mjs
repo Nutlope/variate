@@ -19,7 +19,7 @@ import {
   buildFrameDoc, buildComparePage, assemblePage, normalizeTake, validateTake,
   rewriteAssetPaths, finalizeShipPack, migrateWorkspaceV2, takeFilePath,
   applyManifestOp, registerTake, nextTakeNumber, manifestDiffLabel, defaultPortFor,
-  FRAME_CSP, ASSET_EXTS,
+  extractTitle, FRAME_CSP, ASSET_EXTS,
 } from "./core.mjs";
 
 // ---------------------------------------------------------------------------
@@ -269,7 +269,7 @@ function computeState() {
     ws: WS,
     startedAt: START_TOKEN,
     rev: manifest.rev ?? 0,
-    title: manifest.title ?? "",
+    title: manifest.title || (extractTitle(head) === "Untitled page" ? "" : extractTitle(head)),
     headHash,
     pages,
     queue: queue.filter((q) => q.status === "queued"),
@@ -664,7 +664,7 @@ const server = http.createServer(async (req, res) => {
           src: `/frame/${encodeURIComponent(pg.id)}/${encodeURIComponent(slug)}?take=${idx}&ctx=1`,
           active: idx === s.active,
         }));
-        const page = buildComparePage({ title: m.title ?? "", slug, page: pg.id, takes, live: true });
+        const page = buildComparePage({ title: m.title || extractTitle(readSafe(HEAD) ?? ""), slug, page: pg.id, takes, live: true });
         return send(res, 200, page, { "Content-Type": MIME[".html"] });
       }
       if (p === "/page") {

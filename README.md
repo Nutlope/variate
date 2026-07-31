@@ -23,7 +23,9 @@ site converges one decision at a time.
   Deterministic tools apply instantly; only generative asks reach the agent.
 - **Terminal-first**: the agent never sits blocked. It folds studio clicks
   in between conversational turns (`await.mjs --drain`); a blocking studio
-  mode exists when you would rather click than talk.
+  mode exists when you would rather click than talk, and an optional Claude
+  Code Stop hook (`await.mjs --peek --hook`, see SKILL.md) warns the agent
+  whenever it tries to end a turn with clicks still queued.
 - **Multi-page**: pages share one design system; the studio grows tabs; the
   export is flat (`index.html`, `about.html`, `assets/`) so links work from
   disk and on any static host.
@@ -59,16 +61,17 @@ In your agent, in any project:
 /variate build a landing page for my soil-testing startup
 ```
 
-The agent boots the studio (default http://127.0.0.1:4177), drafts the
-design system and opening sections from your brief, then runs the first
-design round. Keep talking in the terminal OR click in the studio; both land
-on the same files.
+The agent boots the studio (on a stable per-project port, printed at start),
+drafts the design system and opening sections from your brief, then runs the
+first design round. Keep talking in the terminal OR click in the studio;
+both land on the same files.
 
 ## How it works
 
 ```
-you, in the terminal  <->  the agent (writes site/sections/<page>/<slug>/take-N.html)
-        |                        |
+you, in the terminal  <->  the agent (lands takes via scripts/land.mjs:
+        |                   server-routed when the studio is up, so parallel
+        |                   subagents can land takes concurrently)
         |            node await.mjs --drain   (folds in studio clicks, never blocks)
         |                        |
    the studio  ->  POST /api/request  ->  requests/0007-variate-hero.json
@@ -93,7 +96,7 @@ you, in the terminal  <->  the agent (writes site/sections/<page>/<slug>/take-N.
 ```bash
 node scripts/serve.mjs --ws fixtures/demo-ws --port 4177    # studio on the fixture
 node fixtures/pseudo-agent.mjs --ws fixtures/demo-ws        # canned agent, no LLM
-for t in 1 2 3 4 5; do dev/smoke-$t.sh; done                # protocol tests
+for t in 1 2 3 4 5 6 7; do dev/smoke-$t.sh; done            # protocol tests
 ```
 
 The fixture workspace is deliberately v1; the server migrates it to the
