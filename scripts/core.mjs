@@ -68,7 +68,16 @@ export function wsPaths(ws) {
     HEARTBEAT: path.join(STATE_DIR, "agent.heartbeat"),
     SERVER_JSON: path.join(STATE_DIR, "server.json"),
     HISTORY: path.join(STATE_DIR, "history.json"),
+    LOCK: path.join(STATE_DIR, "manifest.lock"),
   };
+}
+
+/** Stable per-workspace default port (4100-4899), so two projects' studios
+ *  never contend for one number. Hash the resolved path; explicit --port
+ *  always wins at the call sites. */
+export function defaultPortFor(wsAbsPath) {
+  const h = crypto.createHash("sha1").update(String(wsAbsPath)).digest();
+  return 4100 + (h.readUInt32BE(0) % 800);
 }
 
 /** Wrap a v1 manifest (flat sections) into the v2 shape (pages) in memory. */
@@ -125,6 +134,169 @@ export function takeFilePath(paths, pageId, slug, file) {
   const p = path.normalize(path.join(paths.SECTIONS, pageId, slug, file));
   if (!p.startsWith(paths.SECTIONS + path.sep)) throw new Error("path escape");
   return p;
+}
+
+// ---------------------------------------------------------------------------
+// manifest mutations (pure; shared by serve.mjs and land.mjs so there is one
+// implementation of the rules, not a fork)
+
+/** Where a new section (or a moved one) goes. start | end | after:<slug> |
+ *  before:<slug>. A missing anchor falls back to the end, loudly. */
+export function resolvePosition(sections, position) {
+  if (position === "start") return { index: 0, warning: null };
+  if (position == null || position === "end") return { index: sections.length, warning: null };
+  const m = String(position).match(/^(after|before):(.+)$/);
+  if (m) {
+    const i = sections.findIndex((s) => s.slug === m[2]);
+    if (i !== -1) return { index: m[1] === "after" ? i + 1 : i, warning: null };
+    return { index: sections.length, warning: `no section "${m[2]}" to anchor on; placed at the end` };
+  }
+  return { index: sections.length, warning: `unknown position "${position}"; placed at the end` };
+}
+
+/** Register a written take file in the manifest. Mutates `manifest`.
+ *  create: { position } allows landing into a section that does not exist
+ *  yet (spliced at the position). Never creates pages. */
+export function registerTake(manifest, pageId, slug, file, { create = null, activate = false } = {}) {
+  const pg = manifest.pages.find((p) => p.id === pageId);
+  if (!pg) return { error: `no page "${pageId}" (have: ${manifest.pages.map((p) => p.id).join(", ") || "none"})` };
+  let sec = pg.sections.find((s) => s.slug === slug);
+  let warning = null;
+  let position = null;
+  if (!sec) {
+    if (!create) return { error: `no section "${slug}" on ${pg.id} (have: ${pg.sections.map((s) => s.slug).join(", ") || "none"}); pass create to add it` };
+    const r = resolvePosition(pg.sections, create.position);
+    warning = r.warning;
+    position = r.index;
+    sec = { slug, takes: [], active: 0 };
+    pg.sections.splice(r.index, 0, sec);
+  }
+  sec.takes.push(file);
+  if (activate) sec.active = sec.takes.length - 1;
+  return { ok: true, section: sec, index: sec.takes.length - 1, position, warning };
+}
+
+/**
+ * The deterministic section ops (move / cut / pick / discard) as a pure
+ * manifest mutation. Returns { label } on success (caller journals/commits)
+ * or { error }. Error strings are load-bearing: smokes grep them.
+ */
+export function applyManifestOp(manifest, body) {
+  const pg = manifest.pages.find((p) => p.id === (body.page ?? manifest.pages[0]?.id)) ?? null;
+  if (!pg) return { error: `no page "${body.page}"` };
+  const i = pg.sections.findIndex((s) => s.slug === body.slug);
+  if (i === -1) return { error: `no section "${body.slug}" on ${pg.id}` };
+  const at = pg.id === "index" ? "" : ` on ${pg.id}`;
+  const op = body.op;
+
+  if (op === "move") {
+    if (body.to != null) {
+      const [sec] = pg.sections.splice(i, 1);
+      const r = resolvePosition(pg.sections, body.to);
+      pg.sections.splice(r.index, 0, sec);
+      return { label: `${body.slug} moved ${body.to}${at}`, warning: r.warning };
+    }
+    const dir = body.dir === "up" ? -1 : 1;
+    const j = i + dir;
+    if (j < 0 || j >= pg.sections.length) return { error: "already at the edge" };
+    [pg.sections[i], pg.sections[j]] = [pg.sections[j], pg.sections[i]];
+    return { label: `${body.slug} moved ${body.dir}${at}` };
+  }
+  if (op === "cut") {
+    pg.sections.splice(i, 1);
+    return { label: `removed ${body.slug}${at}` };
+  }
+  if (op === "pick") {
+    const take = Number(body.take);
+    if (!(take >= 0 && take < pg.sections[i].takes.length)) return { error: "no such take" };
+    pg.sections[i].active = take;
+    return { label: `${body.slug}${at} showing take ${take + 1}` };
+  }
+  if (op === "discard") {
+    // Drop a take from the pager. The file stays on disk (immutable history;
+    // the journal snapshot can restore it via undo), only the manifest forgets.
+    const sec = pg.sections[i];
+    const take = Number(body.take);
+    if (!(take >= 0 && take < sec.takes.length)) return { error: "no such take" };
+    if (sec.takes.length < 2) return { error: "cannot discard the last take" };
+    sec.takes.splice(take, 1);
+    if (sec.active >= sec.takes.length) sec.active = sec.takes.length - 1;
+    else if (sec.active > take) sec.active -= 1;
+    return { label: `discarded a take of ${body.slug}${at}` };
+  }
+  return { error: `unknown op "${op}"` };
+}
+
+/** Allocate the next take-N.html in a section dir (creates the dir). */
+export function nextTakeNumber(sectionsDir, pageId, slug) {
+  const dir = path.join(sectionsDir, pageId, slug);
+  fs.mkdirSync(dir, { recursive: true });
+  const ns = fs.readdirSync(dir).map((f) => Number(f.match(/take-(\d+)\.html/)?.[1] ?? 0));
+  return { dir, n: Math.max(0, ...ns) + 1 };
+}
+
+export const AGENT_FALLBACK_LABEL = "the agent updated the page";
+
+/** A short human label for an agent-side manifest change, from the diff.
+ *  Never throws; falls back to the generic label. */
+export function manifestDiffLabel(prevRaw, nextRaw) {
+  try {
+    const prev = asV2(prevRaw);
+    const next = asV2(nextRaw);
+    const labels = [];
+    const suffix = (id) => (id === "index" ? "" : ` on ${id}`);
+    const prevPages = new Map(prev.pages.map((p) => [p.id, p]));
+    const nextPages = new Map(next.pages.map((p) => [p.id, p]));
+
+    for (const [id, pg] of nextPages) if (!prevPages.has(id)) labels.push(`${pg.title || id} page added`);
+    for (const id of prevPages.keys()) if (!nextPages.has(id)) labels.push(`${id} page removed`);
+
+    for (const [id, np] of nextPages) {
+      const pp = prevPages.get(id);
+      if (!pp) continue;
+      const prevSecs = new Map(pp.sections.map((s) => [s.slug, s]));
+      const nextSecs = new Map(np.sections.map((s) => [s.slug, s]));
+      for (const [slug] of nextSecs) if (!prevSecs.has(slug)) labels.push(`${slug} section added${suffix(id)}`);
+      for (const slug of prevSecs.keys()) if (!nextSecs.has(slug)) labels.push(`${slug} section removed${suffix(id)}`);
+      for (const [slug, ns] of nextSecs) {
+        const ps = prevSecs.get(slug);
+        if (!ps) continue;
+        const grew = ns.takes.length - ps.takes.length;
+        const name = (f) => String(f ?? "").replace(/\.html$/, "");
+        if (grew === 1 && ps.takes.every((f, k) => ns.takes[k] === f)) {
+          const landed = ns.takes[ns.takes.length - 1];
+          const activeOnIt = ns.active === ns.takes.length - 1 && ps.active !== ns.active;
+          labels.push(`${slug}: ${name(landed)} landed${activeOnIt ? ", set active" : ""}${suffix(id)}`);
+        } else if (grew > 1 && ps.takes.every((f, k) => ns.takes[k] === f)) {
+          labels.push(`${slug}: ${grew} takes added${suffix(id)}`);
+        } else if (grew < 0) {
+          labels.push(`${slug}: a take dropped${suffix(id)}`);
+        } else if (grew === 0 && ns.takes.join("|") !== ps.takes.join("|")) {
+          labels.push(`${slug}: takes replaced${suffix(id)}`);
+        } else if (ns.active !== ps.active) {
+          labels.push(`${slug}: now showing ${name(ns.takes[ns.active])}${suffix(id)}`);
+        }
+      }
+      if (
+        pp.sections.length === np.sections.length &&
+        pp.sections.every((s) => nextSecs.has(s.slug)) &&
+        pp.sections.map((s) => s.slug).join("|") !== np.sections.map((s) => s.slug).join("|")
+      ) labels.push(`sections reordered on ${id}`);
+    }
+    if (
+      prev.pages.length === next.pages.length && labels.length === 0 &&
+      prev.pages.map((p) => p.id).join("|") !== next.pages.map((p) => p.id).join("|")
+    ) labels.push("pages reordered");
+    if ((prev.title ?? "") !== (next.title ?? "") && labels.length === 0) labels.push("site title changed");
+
+    if (!labels.length) return AGENT_FALLBACK_LABEL;
+    if (labels.length === 1) return labels[0];
+    const two = `${labels[0]}, ${labels[1]}`;
+    if (labels.length === 2 && two.length <= 80) return two;
+    return `${labels[0]} (+${labels.length - 1} more change${labels.length === 2 ? "" : "s"})`;
+  } catch {
+    return AGENT_FALLBACK_LABEL;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -295,6 +467,7 @@ export function rewriteAssetPaths(html) {
  *  assetsDir (optional) lets missing local images be flagged too. */
 export function validateTake(markup, assetsDir = null) {
   const warnings = [];
+  if (/<!doctype|<html[\s>]/i.test(markup)) warnings.push("take looks like a full document (doctype/html); the contract wants one <section> fragment");
   for (const m of markup.matchAll(/<img\b[^>]*>/gi)) {
     const tag = m[0];
     const src = tag.match(/src=["']([^"']*)["']/i)?.[1] ?? "";

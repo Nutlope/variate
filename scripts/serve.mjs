@@ -18,6 +18,7 @@ import {
   sha8, nowIso, readSafe, atomicWrite, readJsonSafe, statMtime, wsPaths, normalizeSlug,
   buildFrameDoc, buildComparePage, assemblePage, normalizeTake, validateTake,
   rewriteAssetPaths, finalizeShipPack, migrateWorkspaceV2, takeFilePath,
+  applyManifestOp, registerTake, nextTakeNumber, manifestDiffLabel, defaultPortFor,
   FRAME_CSP, ASSET_EXTS,
 } from "./core.mjs";
 
@@ -84,11 +85,13 @@ let undoStack = [];  // manifests (JSON strings) BEFORE each change
 let redoStack = [];
 let lastServerManifestJson = null; // set when THIS server writes; watcher skips journaling those
 let lastObservedManifestJson = null;
+let lastJournalEntry = null; // memo for duplicate suppression in detectAgentLanding
 
 function appendJournal(actor, op, label, manifest, reqId = null) {
   journalSeq++;
   const entry = { seq: journalSeq, ts: nowIso(), actor, op, label, reqId, manifest };
   fs.appendFileSync(JOURNAL, JSON.stringify(entry) + "\n");
+  lastJournalEntry = entry;
   return entry;
 }
 
@@ -112,6 +115,7 @@ function saveHistory() {
 function bootHistory() {
   const tail = loadJournalTail(1);
   journalSeq = tail.length ? tail[tail.length - 1].seq : 0;
+  lastJournalEntry = tail.length ? tail[tail.length - 1] : null;
   const { json } = readJsonSafe(HISTORY);
   undoStack = Array.isArray(json?.undo) ? json.undo : [];
   redoStack = Array.isArray(json?.redo) ? json.redo : [];
@@ -261,7 +265,7 @@ function computeState() {
 // ---------------------------------------------------------------------------
 // deterministic ops
 
-function applyOp(body) {
+function applyOp(body, actor = "server") {
   const { op } = body;
   const m = readManifest();
   const before = JSON.stringify(m);
@@ -280,55 +284,19 @@ function applyOp(body) {
     return { ok: true };
   }
 
-  const pg = pageOf(m, body.page ?? m.pages[0]?.id);
-  if (!pg) return { error: `no page "${body.page}"` };
-  const i = pg.sections.findIndex((s) => s.slug === body.slug);
-  if (i === -1) return { error: `no section "${body.slug}" on ${pg.id}` };
-  const at = pg.id === "index" ? "" : ` on ${pg.id}`;
-
-  if (op === "move") {
-    const dir = body.dir === "up" ? -1 : 1;
-    const j = i + dir;
-    if (j < 0 || j >= pg.sections.length) return { error: "already at the edge" };
-    [pg.sections[i], pg.sections[j]] = [pg.sections[j], pg.sections[i]];
-    commitOp(before, m, "move", `${body.slug} moved ${body.dir}${at}`);
-    return { ok: true };
-  }
-  if (op === "cut") {
-    pg.sections.splice(i, 1);
-    commitOp(before, m, "cut", `removed ${body.slug}${at}`);
-    return { ok: true };
-  }
-  if (op === "pick") {
-    const take = Number(body.take);
-    if (!(take >= 0 && take < pg.sections[i].takes.length)) return { error: "no such take" };
-    pg.sections[i].active = take;
-    commitOp(before, m, "pick", `${body.slug}${at} showing take ${take + 1}`);
-    return { ok: true };
-  }
-  if (op === "discard") {
-    // Drop a take from the pager. The file stays on disk (immutable history;
-    // the journal snapshot can restore it via undo), only the manifest forgets.
-    const sec = pg.sections[i];
-    const take = Number(body.take);
-    if (!(take >= 0 && take < sec.takes.length)) return { error: "no such take" };
-    if (sec.takes.length < 2) return { error: "cannot discard the last take" };
-    sec.takes.splice(take, 1);
-    if (sec.active >= sec.takes.length) sec.active = sec.takes.length - 1;
-    else if (sec.active > take) sec.active -= 1;
-    commitOp(before, m, "discard", `discarded a take of ${body.slug}${at}`);
-    return { ok: true };
-  }
-  return { error: `unknown op "${op}"` };
+  const out = applyManifestOp(m, body);
+  if (out.error) return out;
+  commitOp(before, m, op, out.label, actor);
+  return { ok: true, warning: out.warning ?? null };
 }
 
-function commitOp(beforeJson, manifest, op, label) {
+function commitOp(beforeJson, manifest, op, label, actor = "server", reqId = null) {
   undoStack.push(beforeJson);
   if (undoStack.length > 60) undoStack.shift();
   redoStack = [];
   writeManifest(manifest);
   saveHistory();
-  appendJournal("server", op, label, manifest);
+  appendJournal(actor, op, label, manifest, reqId);
 }
 
 // ---------------------------------------------------------------------------
