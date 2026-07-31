@@ -1,106 +1,100 @@
 # variate
 
-Turn the coding agent you already pay for into a website studio you direct
-from the terminal.
+Four design variations of a section, on the localhost you are already looking
+at, flipped with the arrow keys.
 
-`variate` is an [Agent Skill](https://agentskills.io) that works in Claude
-Code, OpenAI Codex CLI, Cursor, and any other agent that supports the open
-skill format (or can run a shell command; see below). Your agent writes the
-site one section at a time; you art-direct it through **design rounds**: it
-drafts a handful of structurally different takes, you flip through them in a
-live preview, and you answer in the terminal ("2, but with 4's stat strip").
-That sentence IS the design; the agent draws it, logs the verdict, and the
-site converges one decision at a time.
+Your coding agent writes real alternatives of one of your files. A small card
+appears at the bottom of your own dev server's page. You press ← and → and the
+page changes. The one you stop on is the code, already on disk, in your repo,
+in your language.
 
-- **Design rounds**: 5 wildly different takes of a section, compared in
-  place between their real neighbors, picked by keyboard or by talking.
-  Verdicts append to `site/DECISIONS.md`, so the design tree survives
-  restarts and context loss.
-- **The studio** (a zero-dep local server): a live section stack with
-  variate/steer, scoped prompt edits, an in-place tracing-paper **sketch
-  pad**, drag-and-drop **images**, a live **design-token editor** over your
-  `:root`, inline **text editing**, takes pagers, move/cut/discard/undo.
-  Deterministic tools apply instantly; only generative asks reach the agent.
-- **Terminal-first**: the agent never sits blocked. It folds studio clicks
-  in between conversational turns (`await.mjs --drain`); a blocking studio
-  mode exists when you would rather click than talk, and an optional Claude
-  Code Stop hook (`await.mjs --peek --hook`, see SKILL.md) warns the agent
-  whenever it tries to end a turn with clicks still queued.
-- **Multi-page**: pages share one design system; the studio grows tabs; the
-  export is flat (`index.html`, `about.html`, `assets/`) so links work from
-  disk and on any static host.
-- **Ship-ready export**: every page gets a meta description, OG tags, and a
-  favicon derived from its own copy and logo mark. `npx serve dist`, drag
-  dist/ into Netlify, or `vercel deploy dist`: nothing else to configure.
+```
+     ┌──────────────────────────────────────────┐
+     │  HERO │ ‹  1  [2]  3  4  › │ pick   ▾     │
+     └──────────────────────────────────────────┘
+```
 
-Everything runs local: 127.0.0.1 only, no accounts, no telemetry, no API
-keys beyond whatever runs your agent.
+## Why it is built this way
+
+Switching **writes the real file** and lets your own dev server re-render it.
+That one decision removes almost everything else: there is no preview server,
+no wrapper component, no iframe, no hydration risk, no build step, no
+dependency added to your project, and no "keep" step at the end, because what
+you are looking at is already the code that ships. It also means variate works
+the same on React, Vue, Svelte, Astro, Rails, or a single HTML file, and works
+on components, whole pages, and theme files alike.
+
+- **Nothing is variate-shaped.** A variant is a `.tsx`, or a `.vue`, or a
+  `.css`. Its only contract is that it drops in where the original was.
+- **Your original is variant 1**, never edited. Flipping back to it is one key.
+- **A hand edit is never lost.** If you edit the live file yourself, the next
+  switch keeps it as a new variant first.
+- **Which variant is live is derived, not stored**, so it cannot drift out of
+  sync with your files.
+- **`variate end` leaves one line of git diff**: the design you chose.
+
+## Use
+
+In your agent, in a project you are already running:
+
+```
+/variate give me four takes on the hero
+```
+
+Or drive it yourself:
+
+```bash
+node variate.mjs up   --root .            # card appears on your page
+node variate.mjs add  src/components/Hero.tsx
+# your agent writes .variate/hero/plan.json and 2.tsx, 3.tsx, 4.tsx
+node variate.mjs use  hero 3              # or just press 3 on the card
+node variate.mjs end                      # keep what is live, remove variate
+```
+
+Keys: `←` `→` flip · `1`-`9` jump · `[` `]` change section · `esc` hide · `?` help.
+
+The card also has a **pick** button: click a section on your page and your
+agent gets a request to make four takes of it, with enough of the visible copy
+to find it in your source.
 
 ## Install
 
-One repo, any agent, via the [skills CLI](https://github.com/vercel-labs/skills):
+Any agent that supports the open skill format:
 
 ```bash
 npx skills add <you>/variate -a claude-code -a codex
 ```
 
-or by hand (Claude Code):
+or by hand:
 
 ```bash
 git clone <this repo> ~/.claude/skills/variate
 ```
 
-(Codex CLI reads `~/.agents/skills/variate`; anything that runs shell
-commands works via `node scripts/start.mjs`, which prints what to do next.)
+Anything that can run a shell command works too: `node variate.mjs up` prints
+what to do next, and `AGENTS.md` is the whole contract in one page.
 
-## Use
+## What it puts in your project
 
-In your agent, in any project:
+One dev-only, marker-bracketed line in your entry file, and `.variate/`
+(gitignored) holding the alternatives. `variate end` removes both.
 
-```
-/variate build a landing page for my soil-testing startup
-```
+Everything is local: `127.0.0.1` only, an Origin allowlist, a per-project
+token, no accounts, no telemetry, and no network calls beyond your own agent.
 
-The agent boots the studio (on a stable per-project port, printed at start),
-drafts the design system and opening sections from your brief, then runs the
-first design round. Keep talking in the terminal OR click in the studio;
-both land on the same files.
+## Honest limits
 
-## How it works
-
-```
-you, in the terminal  <->  the agent (lands takes via scripts/land.mjs:
-        |                   server-routed when the studio is up, so parallel
-        |                   subagents can land takes concurrently)
-        |            node await.mjs --drain   (folds in studio clicks, never blocks)
-        |                        |
-   the studio  ->  POST /api/request  ->  requests/0007-variate-hero.json
-   (live viewer,   deterministic ops (move/cut/pick/discard/undo, tokens,
-    picker, sketch,  text edits) applied by the server instantly
-    drag-drop)
-        |
-   server watches files -> SSE -> only the touched section's iframe reloads
-```
-
-- Take files are immutable; every mutation is a manifest mutation; undo is a
-  journal-backed manifest restore. Cut and discard never delete work.
-- Sections render in sandboxed iframes (`allow-scripts`, never
-  `allow-same-origin`) behind a strict CSP; generated code cannot touch the
-  studio, and external requests are blocked and flagged.
-- The workspace is plain files under `./variate/` in your project: diff it,
-  commit it, or import any single-file page with `data-rb` sections (Recast
-  exports continue seamlessly).
+Flip latency is your dev server's: usually under 150ms on Vite, 200-400ms on
+Next, and a full reload where there is no HMR. Plain HTML reloads. A modal
+`<dialog>` opened after the card can cover it; the keys still work. Finding
+which file a clicked section came from is a text search of your repo, not a
+source map, because source mapping is unreliable on modern bundlers and lying
+about it would be worse.
 
 ## Dev
 
 ```bash
-node scripts/serve.mjs --ws fixtures/demo-ws --port 4177    # studio on the fixture
-node fixtures/pseudo-agent.mjs --ws fixtures/demo-ws        # canned agent, no LLM
-for t in 1 2 3 4 5 6 7; do dev/smoke-$t.sh; done            # protocol tests
+node dev/fixture.mjs                      # a real page to try the card on
+node variate.mjs up --root <that copy>    # attach and start
+dev/smoke-cli.sh && dev/smoke-http.sh && dev/smoke-card.sh
 ```
-
-The fixture workspace is deliberately v1; the server migrates it to the
-multi-page v2 layout at boot, which is itself under test (smoke-5).
-
-macOS first; Linux uses a polling watcher (`--poll` forces it anywhere);
-Windows is untested.

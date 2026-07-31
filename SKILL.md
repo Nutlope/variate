@@ -1,219 +1,168 @@
 ---
 name: variate
 description: >
-  Design landing pages with the user through rounds of concrete variants: you
-  draft structurally different takes of each section, the user compares them
-  in a live local preview and answers in the terminal, and the site converges
-  section by section, page by page. Use when the user wants to build, design,
-  or iterate a landing page, marketing site, homepage, or small multi-page
-  website; when they ask for design variations or prototypes to choose
-  between; or to continue an existing variate workspace ("open the variate
-  studio"). Starts a local server; ends with a polished, shippable export.
+  Put four design variations of a section, a page, or a theme in front of the
+  user on their own dev server, and let them flip between them with arrow keys
+  from a small card at the bottom of the page. Use when the user wants design
+  variations, alternatives, or A/B options of something they are building;
+  when they ask to try a different hero, layout, palette, or section; when
+  they want to compare directions before committing; or to continue an
+  existing variate session. Works on any stack: the variations are real files
+  in their repo and switching just swaps one.
 license: MIT
-compatibility: Requires Node.js 18+ and a local web browser. macOS/Linux first.
+compatibility: Requires Node.js 18+ and a dev server the user already runs.
 metadata:
-  version: "2.1.0"
+  version: "3.0.0"
   author: youssef
 ---
 
 # variate
 
-You design a page WITH the user: rounds of takes they compare and pick from,
-converging one decision at a time. You are the designer and the model; the
-studio and compare pages only render options. The user's verdicts arrive as
-terminal sentences, and those verdicts are the design. Read
-`references/recipes.md` before your first generative work each session, and
-read `site/DECISIONS.md` so you never re-litigate a settled round.
+The user's own localhost is the canvas. You write real alternatives of one of
+their files; a small card at the bottom of their page lets them flip between
+them; the one they stop on is the code. There is no studio, no preview server
+of ours, and no separate thing to keep in sync.
 
-## The workspace (created by start.mjs, default `./variate`)
+## Critical floor
 
-```
-site/head.html              the design system: ONE <style> with :root tokens,
-                            type scale, buttons. Shared by every page; the
-                            only file you may edit in place (bootstrap and
-                            polish only).
-site/manifest.json          the single mutable truth. Schema: {version: 2,
-                            rev: int (bumped on every write), title,
-                            bodyAttrs, pages: [{id, title, route:
-                            "<id>.html", sections: [{slug, takes:
-                            ["take-1.html", ...], active: 0-BASED INDEX
-                            into takes}]}]}. NEVER hand-edit it; every
-                            mutation you make goes through land.mjs below.
-site/sections/<page>/<slug>/  take files. IMMUTABLE: never edit or delete a
-                            take; land a new one instead.
-site/DECISIONS.md           append-only design-round log: question, takes,
-                            verdict, why. Read at session start.
-requests/ requests/done/    the studio click queue. NEVER touch these files
-                            yourself; await.mjs is the only interface.
-sketches/ assets/           sketch payloads; the user's images.
-dist/                       the export: one flat <route>.html per page plus
-                            assets/, ship-ready.
-```
+Obey these even if you read nothing else.
 
-The scripts are implementation, not interface: never read `scripts/*.mjs`
-source. Everything you need is this file, `references/recipes.md`, and the
-usage text the CLIs print.
+1. **Variant 1 is the user's file as it was.** Never edit it, never delete it,
+   never overwrite it. Everything you write is a new numbered sibling.
+2. **Every variant is a complete, drop-in replacement for the target file.**
+   Same exports, same props, same imports the app relies on. It must run: a
+   variant that breaks the build white-screens their app.
+3. **Speak the project's own language.** Its design tokens, its utility
+   classes, its components, its fonts, its real copy. A variant that adds a
+   dependency or invents a colour has already failed.
+4. **Four variants, structurally different.** Different layout, different
+   hierarchy, different primary affordance. Four tweaked card grids is
+   wallpaper, not a round.
+5. **Write `plan.json` before the variants.** It names the directions, and it
+   is what the user reads while they wait.
+6. **Talk in positions, never filenames.** "2 of 4", not "3.tsx".
+7. **Ask one question per round, with your recommendation.** Then wait.
+8. **Never hand-edit `.variate/*/target`, and never write the target file
+   directly while a set is open.** Write a variant and switch to it.
+9. **Offer `variate end` when the session is done.** Leaving the tag behind is
+   leaving litter in someone's repo.
 
-## Start
+## The flow at a glance
 
 ```
-node <this-skill-dir>/scripts/start.mjs --ws <project>/variate
+node <skill>/variate.mjs up   --root <project>          card appears on their page
+node <skill>/variate.mjs add  <file> [--n 4]            variant 1 = the file as it is
+   write .variate/<set>/plan.json, then 2.<ext>, 3, 4   your actual design work
+node <skill>/variate.mjs check <set>                    lint before you present
+   tell the user: arrows, or the numbers on the card
+node <skill>/variate.mjs use  <set> <n>                 apply a verdict yourself
+node <skill>/variate.mjs end  [<set>]                   keep what is live, clean up
 ```
 
-It prints the studio URL (tell the user; if your harness has a browser
-preview pane, open it there too) and whether the page is empty. Empty page:
-read the Bootstrap recipe and write `head.html`, a nav, a hero, and one or
-two more sections from the user's brief. Then run the first design round.
+`up` prints the exact next command every time; when in doubt, read its block.
+Exit codes: **0** did it, **1** error, **2** nothing to do, **3** the user has
+to act.
 
-## Landing work: land.mjs (your only pen for the manifest)
+## The one model
+
+A **set** is one target file plus N alternatives:
 
 ```
-node <skill>/scripts/land.mjs land --ws <ws> --slug hero [--page index] \
-  [--create [--position start|end|after:<slug>|before:<slug>]] \
-  [--activate] [--label "split manifesto, quieter"]     take markup on stdin
-node <skill>/scripts/land.mjs check [--ws <ws>]          dry-run validation
-node <skill>/scripts/land.mjs pick|discard --ws <ws> --slug hero --take <N|last>
-node <skill>/scripts/land.mjs move --ws <ws> --slug hero --to start|end|up|down|after:<x>
-node <skill>/scripts/land.mjs cut  --ws <ws> --slug hero
-node <skill>/scripts/land.mjs page --ws <ws> --id about [--title About]
+.variate/hero/
+  target        one line: the path this set stands in for
+  plan.json     ["as it was", "the ledger, type only", ...]  one name per position
+  1.tsx         their file, untouched            <- position 1, always
+  2.tsx 3.tsx 4.tsx                              <- yours
 ```
 
-It routes through the studio when it is running (parallel-safe: subagents may
-land takes concurrently) and falls back to locked direct writes when it is
-not. `--take` addresses FILES (`--take 3` = take-3.html, or `last`), never
-pager positions. Draft, `check`, fix, THEN `land`: a landed take is immutable,
-so validate before it enters the pager, not after. Give `--label` a short
-intent line ("the wire, diagram-first"); it becomes the user's activity feed.
-The JSON reply carries `warnings`; fix any before you ack or present.
+Switching copies a variant over the target file and their dev server
+re-renders. Which variant is live is **derived** by comparing the target
+against each variant, never stored, so it cannot drift. If the user hand-edits
+the target, the next switch adopts that edit as a new variant first: their work
+is never destroyed, which is why nothing in this tool asks "are you sure".
 
-## Terminal mode (the default)
+## Opening a round
 
-The conversation drives; nothing blocks. Work like this:
+1. **Resolve the target.** A component, a page, a layout, a theme or CSS file:
+   anything that is one file. If the card sent you a selection, its `text` is
+   the visible copy of what the user clicked, so grep the repo for it.
+2. **Read the substrate before you draft.** This is what makes the variants
+   look like their app instead of generic output:
+   - their design tokens (Tailwind `@theme` block, `:root` custom properties,
+     theme config) and use those names, never raw hex
+   - the target file's own imports: reuse their `Button`, their motion
+     helpers, their fonts
+   - the files rendered immediately before and after it, so the seams flow
+   - their real copy. Never invent metrics, customers, or testimonials.
+3. **`variate add <file>`**, then write `plan.json` with one short direction
+   per position, position 1 being "as it was".
+4. **Draft.** One variant per file. If your harness runs subagents, draft them
+   in parallel, one per subagent, each with an explicit divergence constraint.
+   Each variant appears on the user's page the moment its file lands, so land
+   them as you go rather than in a batch at the end.
+5. **`variate check <set>`** and fix what it reports. If the project has a
+   typecheck or lint script, run it: a variant that does not compile is not a
+   variant.
+6. **Hand it over.** Name what each position is trying, say which you would
+   keep and why, and ask which one. Tell them: arrows or the numbers.
 
-1. **Act on what the user says**: draft takes, edit sections, apply verdicts,
-   all through `land.mjs` (land / pick / discard / move / cut / page). The
-   studio hot-reloads and the feed shows your labels as you land.
-2. **Run design rounds** for anything worth a decision: takes first, then one
-   question. The full loop is the "Design rounds" recipe; its compare views
-   (`/compare/<page>/<slug>` live, or `scripts/compare.mjs --page --slug` for
-   a static file) are how the user flips between takes.
-3. **Fold in studio clicks between turns**:
-   `node <skill>/scripts/await.mjs --ws <ws> --drain`
-   prints every queued studio request as ONE JSON array and exits (2 = none).
-   Fulfill each (recipes per type below), then ack each:
-   `... --drain --ack <id> --note "<one line for the user's activity feed>"`.
-   Run a drain whenever you finish a turn's work or the user mentions
-   clicking something. Never sit blocked while the user is talking.
+The full craft rules are in `references/craft.md`. Read it before your first
+generative work in a session.
 
-## Studio mode (opt-in, by words only)
+## Applying a verdict
 
-Enter the blocking loop ONLY when the user says so in words ("I'll drive from
-the studio"). Never infer it from silence: if the user goes quiet, end your
-turn; queued clicks arrive on your next drain or via the Stop hook below.
+A plain pick needs nothing from you: the user is already on it, and the file
+already says so. Log the decision in your reply.
 
-1. `node <skill>/scripts/await.mjs --ws <ws>` blocks until a studio action,
-   prints ONE request, exits 0. Fulfill it, then loop with the ack folded in:
-   `... --ack <id> --note "..."`. Exit 2 = idle; just re-run. After three
-   consecutive idles, ask the user whether to keep waiting.
-2. Claude Code MAY use a long shell timeout (10 minutes) with `--timeout 540`
-   to cut round trips; other CLIs keep `--timeout 90`. Never background
-   await (its exit IS your signal), never pipe input to it.
+The best feedback is compositional. "2's layout with 4's stat strip" IS the
+design: draw it as the next position rather than arguing.
 
-Either mode: `"type":"done"` means the user finished. Apply any last verdicts
-first, then ack: the server re-exports when your ack lands, so dist picks up
-same-turn changes. Still open `dist/index.html` and verify it reflects the
-final state before pointing the user at it, then stop.
-`"redelivered": true` means a claim was interrupted earlier: check whether
-your takes already landed before writing duplicates; if they did, just ack.
+"More like 3, but calmer" is a new round on the same set: keep the numbering
+going, add positions, tell them the new range.
 
-## Request types (studio clicks and their recipes)
+## What the user does without you
 
-Every target carries `target.page` (the page id); section work goes under
-`site/sections/<page>/<slug>/`.
+Flipping, picking, and hand-editing the target file all happen without a
+request reaching you. So **always re-read the target and the set before you
+write**, and never assume the position you left them on is the one they are
+looking at.
 
-| type     | target             | fulfill by                                                      | recipe    |
-|----------|--------------------|------------------------------------------------------------------|-----------|
-| variate  | `page` + `slug`    | `params.count` new takes, each diverging from ALL existing takes; `params.steer` bends them; set `active` to your first new take | Variate |
-| instruct | `page` + `slug`    | one new take applying `params.instruction` exactly, nothing else  | Instruct  |
-| add      | `page`; position via `params.position` (`start`, `end`, `after:<slug>`) | new section dir + take-1 + manifest entry at the position; `params.kind` names a catalog entry, else `params.instruction` describes it | Add |
-| sketch   | `page` + `slug`    | one new take whose COMPOSITION matches `params.blueprint` (and `params.png` if you can read images) | Sketch |
-| polish   | `page`             | unify that page's seams: new take per section that needs it + fold `v<id>-` styles into head.html | Polish |
-| page     | -                  | a new page from `params.id` + `params.title`: manifest entry (route `<id>.html`), then draft its nav + hero in the site's language | Pages |
-| done     | -                  | ack, point the user at dist/, stop looping                       | -         |
+## The card's asks
 
-## The fragment contract (short form; full form in recipes.md)
+Between turns, and whenever the user mentions clicking something:
 
-Every take file is EXACTLY ONE `<section data-rb="<slug>">` element:
+```
+node <skill>/variate.mjs drain --root <project>
+```
 
-1. No doctype, html, head, or body tags; no markdown fences; no commentary.
-2. The page's global CSS (head.html) already styles it: REUSE the custom
-   properties, type scale, spacing rhythm, and button classes.
-3. New styles: ONE `<style>` inside the section; every new class name starts
-   with `v<request-id>-` (e.g. `v0007-grid`) or, for takes you draft in
-   terminal mode, `vt<take-number>-`. Never touch `:root`, never restyle
-   global tags or existing classes.
-4. Zero external requests: no CDN, no web fonts, no remote anything.
-5. Images: `<img src="assets/<file>" alt="...">` for REAL images the user
-   provided (photos, logos, screenshots; they live in `assets/`, dropped in
-   the studio or copied there for you). Drawn art stays inline SVG or CSS.
-   Never an external image URL, never a path outside assets/.
-6. At most ONE `<script>` inside the section, guarded so it never throws.
-7. Responsive 360-1440px; honor `prefers-reduced-motion`; real contrast.
-8. No eyebrow labels above headings, no italic display type, and whitespace
-   is the luxury: generous padding, calm gaps, air around the type.
+It prints every queued ask as ONE JSON array and exits 2 when there are none.
+Ack with `--ack <id> --note "<one line for the user>"` folded into the next
+call. Types: `vary` (make N of this file or this selection), `more` (N more on
+an existing set, with `steer` and `from`), `done`.
 
-## What the user can do without you (no request reaches the agent)
+## Attaching, and leaving
 
-The studio has deterministic, instant tools the user drives directly. They
-never queue a request, but they DO change the files you build on, so always
-re-read fresh state before writing:
+`up` adds one dev-only, marker-bracketed line to their entry file and writes
+`.variate/` (gitignored). `end` removes both and leaves the winning variant in
+place, so `git diff` shows one changed file: the design decision, nothing else.
+If their stack is not detected, `up` prints the tag for them to paste;
+`references/frameworks.md` has the snippet and the caveat per stack.
 
-- **Move / cut / pick a take / discard a take / undo / redo** - manifest
-  edits, applied by the server.
-- **Design tokens** - a live editor over your `head.html` `:root` values.
-  `head.html` may differ from what you last wrote: re-read it before a
-  polish or any head edit.
-- **Inline text edits** - clicking text and retyping saves a new take, so a
-  section may gain takes you did not draw.
+## Look at what you made
 
-## Look at what you made (a budget, not a rabbit hole)
+1. Fix everything `check` reports before you present.
+2. If your harness can open a page, look at the live one at desktop and at
+   about 390px. One pass per round, not one per variant.
+3. If the dev server logs an error after a switch, that variant is broken:
+   switch back to 1 and fix it before saying anything.
 
-Never ack work you have not checked, and never spend more than this:
+## Optional: a Stop hook so clicks are never missed
 
-1. ALWAYS: fix the `warnings` in land.mjs's reply (or `GET /api/state`)
-   on everything you touched BEFORE acking. `check` catches most of them
-   before the take even lands.
-2. ONE visual pass when your harness can open web pages: `/page?p=<id>` at
-   desktop and ~390px. For a single take, `/frame/<page>/<slug>?take=<N>`.
-   Fix what is broken, then ack. Screenshot budget: a couple per round, not
-   per take; prefer reading the served HTML when screenshots are slow.
-3. NEVER open take files as `file://` URLs: they render without head.html,
-   so what you would be judging is not the page.
-4. After an export, open `dist/index.html` (or tell the user to) and confirm
-   every page and image made it.
-
-## Rules of the road
-
-- Take files are immutable history; the user flips between them. Only land.
-- With the user, options are PAGER POSITIONS (the numbers in the compare
-  picker): say "2 of 5", never "take-6.html" (file numbers drift when takes
-  are discarded). Record the position-to-file mapping in `DECISIONS.md`.
-- Re-read the manifest AND `head.html` before every write; never trust a
-  stale outline or an old design system.
-- Only `head.html` may be edited in place, and only during bootstrap/polish;
-  mention any head change in your notes (undo cannot restore it).
-- Log every design-round verdict in `site/DECISIONS.md`; read it at start.
-- Suggest a git commit of the workspace at good checkpoints.
-- The user sees your `--note` and `--label` lines in their activity feed:
-  write them for a human, one short line each.
-
-## Optional: a Claude Code Stop hook so clicks are never forgotten
-
-If the user wants it, they can paste this into the project's
-`.claude/settings.json` (fill in the absolute paths); it warns when studio
-clicks are waiting as a turn ends, and never blocks:
+The user can paste this into their project's `.claude/settings.json` if they
+want a nudge when they end a turn with asks still queued. It warns, never
+blocks:
 
 ```json
 {"hooks": {"Stop": [{"hooks": [{"type": "command", "timeout": 10,
-  "command": "command -v node >/dev/null 2>&1 && node '<abs-skill-dir>/scripts/await.mjs' --ws '<abs-workspace>' --peek --hook || true"}]}]}}
+  "command": "command -v node >/dev/null 2>&1 && node '<abs-skill-dir>/scripts/await.mjs' --ws '<abs-project>/.variate' --peek --hook || true"}]}]}}
 ```

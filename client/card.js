@@ -172,12 +172,17 @@ button.row .n{ margin-left: auto; font-size: 10px; opacity: .7 }
 .hit{ position: absolute; left: -10px; right: -10px; bottom: 0; height: 40px; pointer-events: auto }
 .wrap:not([data-collapsed]) .hit{ display: none }
 
+/* Narrow: the section name is the first thing to go (the note still says it
+   on every change), so the positions and the actions always fit. */
 @media (max-width: 560px){
   :host{ left: 10px; right: 10px; transform: none }
   .wrap{ padding-bottom: calc(10px + env(safe-area-inset-bottom)) }
-  .dock{ width: 100% }
-  .pager{ flex: 1 } button.chip{ flex: 1 }
-  .name{ max-width: 9ch }
+  .dock{ width: 100%; padding: 0 6px }
+  .name{ display: none }
+  .pager{ flex: 1; justify-content: center }
+  button.chip{ min-width: 30px; padding: 0 4px }
+  button.chip.act{ padding: 0 9px }
+  .tail{ margin-left: 2px; padding-left: 6px }
 }
 @media (pointer: coarse){
   .dock{ height: 52px } button.chip, .thumb{ height: 36px; min-width: 36px }
@@ -484,7 +489,7 @@ button.row .n{ margin-left: auto; font-size: 10px; opacity: .7 }
         refs.tail.appendChild(p);
       }
     }
-    const x = el("button", { class: "chip nav", type: "button", text: "\u2014" });
+    const x = el("button", { class: "chip nav", type: "button", text: "\u25be" });
     x.title = "hide (esc)";
     x.setAttribute("aria-label", "hide");
     x.onclick = () => setCollapsed(true);

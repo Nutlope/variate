@@ -58,7 +58,8 @@ export function checkVariant(P, set, variant, baselineSrc, deps) {
   }
 
   // House style, mechanically checkable.
-  if (/[–—]/.test(src)) w.push("uses an em or en dash; the style bar forbids them");
+  // Written as escapes so this repo contains no literal em or en dash.
+  if (/[\u2013\u2014]/.test(src)) w.push("uses an em or en dash; the style bar forbids them");
   for (const tag of src.match(/<img\b[^>]*>/gi) ?? []) {
     if (!/\balt\s*=/.test(tag)) { w.push("an <img> is missing alt text"); break; }
   }

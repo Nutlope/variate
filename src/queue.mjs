@@ -23,13 +23,20 @@ function nextSeq(P) {
   return max + 1;
 }
 
+const short = (s, max = 38) => {
+  const t = String(s ?? "").replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const sp = cut.lastIndexOf(" ");
+  return (sp > max * 0.6 ? cut.slice(0, sp) : cut) + "...";
+};
+
 /** One line a human reads in the terminal and in the card's feed. */
 export function labelFor(type, params = {}) {
   const n = params.count ?? 4;
   if (type === "vary") {
-    return params.set
-      ? `${n} takes of ${params.set}`
-      : `${n} takes of the ${params.hint || "selected section"}`;
+    if (params.set) return `${n} takes of ${params.set}`;
+    return params.hint ? `${n} takes of "${short(params.hint)}"` : `${n} takes of the selected section`;
   }
   if (type === "more") {
     const bits = [`${n} more of ${params.set}`];
