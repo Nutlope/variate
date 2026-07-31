@@ -4,6 +4,7 @@
 // shows the round to the user. Regex-level on purpose, because the one thing
 // worse than no linter is a linter that needs a parser for six languages.
 
+import fs from "node:fs";
 import path from "node:path";
 import { readSafe } from "./core.mjs";
 
@@ -49,11 +50,24 @@ export function checkVariant(P, set, variant, baselineSrc, deps) {
     if (baseClient !== thisClient) w.push(baseClient ? 'missing the "use client" directive variant 1 has' : 'adds "use client" where variant 1 has none');
   }
 
-  if (isCode && deps) {
+  if (isCode) {
+    // Relative imports are written from where the variant will LIVE (the
+    // target's directory), not from .variate/, so resolve them against the
+    // target. This is the check that catches a variant which would not build.
+    const dir = path.dirname(set.target);
+    const exts = ["", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".vue", ".svelte", ".astro", ".css", "/index.js", "/index.jsx", "/index.ts", "/index.tsx"];
     for (const spec of importsOf(src)) {
-      if (!bare(spec)) continue;
-      const p = pkgName(spec);
-      if (!deps.has(p) && !p.startsWith("node:")) w.push(`imports "${p}", which is not in package.json`);
+      if (bare(spec)) {
+        if (!deps) continue;
+        const p = pkgName(spec);
+        if (!deps.has(p) && !p.startsWith("node:")) w.push(`imports "${p}", which is not in package.json`);
+        continue;
+      }
+      if (!spec.startsWith(".")) continue; // an alias like @/ or ~; we cannot resolve it here
+      const base = path.resolve(dir, spec);
+      if (!exts.some((e) => fs.existsSync(base + e))) {
+        w.push(`imports "${spec}", which does not resolve from ${path.relative(P.ROOT, dir) || "."}`);
+      }
     }
   }
 

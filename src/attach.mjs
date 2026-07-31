@@ -114,9 +114,19 @@ export function attach(root, { stack, file, create }, tagUrl) {
 
   let out;
   if (stack === "vite") {
-    // Entry module: the block goes at the very top so the card mounts before
-    // the app's own bootstrapping can throw.
-    out = snippet + src;
+    // Entry module. Go BELOW the import block: an executable statement above
+    // the imports reads as a bug in a diff and trips import/first, and ESM
+    // hoisting means it would not run earlier anyway.
+    const lines = src.split("\n");
+    let at = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i].trim();
+      if (l.startsWith("import ") || l.startsWith("import{") || (l.startsWith("}") && lines[i].includes("from"))) at = i + 1;
+      else if (l === "" || l.startsWith("//") || l.startsWith("/*") || l.startsWith("*")) continue;
+      else if (at) break;
+    }
+    lines.splice(at, 0, snippet.replace(/\n$/, ""));
+    out = lines.join("\n");
   } else if (stack === "next-app" || stack === "next-pages" || stack === "astro" || stack === "sveltekit") {
     const i = src.lastIndexOf("</body>");
     if (i !== -1) out = src.slice(0, i) + snippet + src.slice(i);

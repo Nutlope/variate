@@ -80,6 +80,30 @@ printf '<html><body><h1>bad \xe2\x80\x94 dash</h1><img src="x.png"></body></html
 node "$V" check page --root "$WS" | grep -q "em or en dash"
 node "$V" check page --root "$WS" | grep -q "alt text"
 
+echo "-- check resolves a variant's imports from where the variant will LIVE"
+CODE=$(mktemp -d)/app
+mkdir -p "$CODE/src/components"
+printf '{"name":"a","dependencies":{"react":"^19"}}\n' > "$CODE/package.json"
+printf 'export function Button(){ return null }\n' > "$CODE/src/components/Button.jsx"
+printf 'import { Button } from "./Button";\nexport function Hero(){ return Button }\n' > "$CODE/src/components/Hero.jsx"
+node "$V" add "$CODE/src/components/Hero.jsx" --root "$CODE" > /dev/null
+# a sibling import that is correct once copied over the target must NOT warn,
+# even though the variant file itself sits in .variate/
+printf 'import { Button } from "./Button";\nexport function Hero(){ return Button }\n' > "$CODE/.variate/hero/2.jsx"
+node "$V" check hero --root "$CODE" | grep -q "no warnings"
+# ...and one that would genuinely fail to build must warn
+printf 'import { Nope } from "./Nope";\nimport c from "party-parrot";\nexport function Hero(){ return [Nope, c] }\n' > "$CODE/.variate/hero/3.jsx"
+node "$V" check hero --root "$CODE" | grep -q 'does not resolve'
+node "$V" check hero --root "$CODE" | grep -q 'not in package.json'
+# a variant that drops the export the app imports must warn
+printf 'export function Other(){ return null }\n' > "$CODE/.variate/hero/4.jsx"
+node "$V" check hero --root "$CODE" | grep -q 'does not export Hero'
+
+echo "-- add says so when nothing in the project imports the target"
+printf 'export function Orphan(){ return null }\n' > "$CODE/src/components/Orphan.jsx"
+node "$V" add "$CODE/src/components/Orphan.jsx" --root "$CODE" | grep -q "nothing in this project seems to import"
+node "$V" add "$CODE/src/components/Button.jsx" --root "$CODE" | grep -qv "nothing in this project seems to import"
+
 echo "-- end keeps what is live and removes every trace"
 node "$V" use page 1 --root "$WS" > /dev/null
 node "$V" use page 2 --root "$WS" > /dev/null

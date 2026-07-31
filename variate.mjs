@@ -162,6 +162,30 @@ async function cmdUp() {
 // ---------------------------------------------------------------------------
 // add
 
+/** Does anything in the project actually pull this file in? A cheap grep on
+ *  the basename: variate's whole promise is that the user SEES the variants,
+ *  so a target nothing renders is worth saying out loud. */
+function referenced(abs) {
+  const stem = path.basename(abs).replace(/\.[^.]+$/, "");
+  const skip = new Set(["node_modules", ".git", ".variate", "dist", "build", ".next", ".svelte-kit", "out", "coverage"]);
+  let hits = 0;
+  const walk = (dir, depth) => {
+    if (hits || depth > 6) return;
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (hits) return;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { if (!skip.has(e.name)) walk(p, depth + 1); continue; }
+      if (p === abs || !/\.(m?[jt]sx?|vue|svelte|astro|html|erb|php|py|rb)$/i.test(e.name)) continue;
+      const src = readSafe(p);
+      if (src && new RegExp(`["'\`][^"'\`]*\\b${stem}\\b`).test(src)) hits++;
+    }
+  };
+  walk(P.ROOT, 0);
+  return hits > 0;
+}
+
 function cmdAdd() {
   const rel = rest[0];
   if (!rel) die("usage: variate add <file> [--n 4]");
@@ -185,7 +209,10 @@ function cmdAdd() {
   key("SET", `${name}  ·  ${path.relative(P.ROOT, abs)}`);
   key("SLOT 1", `your file as it is now (${(fs.statSync(abs).size / 1024).toFixed(1)} KB), never edited`);
   key("WRITE", `${path.relative(P.ROOT, dir)}/plan.json  then  ${[...Array(Math.max(0, n - 1))].map((_, i) => `${i + 2}${ext}`).join("  ")}`);
-  key("CARD", "each variant appears on the page the moment its file lands");
+  key("CARD", `the pager grows to ${n} as each file lands; the page changes only when you switch`);
+  if (!referenced(abs)) {
+    key("HEED", "nothing in this project seems to import that file, so the user may not see it on their page");
+  }
   process.exit(0);
 }
 

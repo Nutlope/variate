@@ -49,17 +49,27 @@ Obey these even if you read nothing else.
 
 ## The flow at a glance
 
+`<skill>` below is this skill's own directory, the one holding this file.
+
 ```
-node <skill>/variate.mjs up   --root <project>          card appears on their page
-node <skill>/variate.mjs add  <file> [--n 4]            variant 1 = the file as it is
-   write .variate/<set>/plan.json, then 2.<ext>, 3, 4   your actual design work
-node <skill>/variate.mjs check <set>                    lint before you present
-   tell the user: arrows, or the numbers on the card
-node <skill>/variate.mjs use  <set> <n>                 apply a verdict yourself
-node <skill>/variate.mjs end  [<set>]                   keep what is live, clean up
+node <skill>/variate.mjs up    --root <project> [--port N]   card appears on their page
+node <skill>/variate.mjs add   <file> [--n 4]                variant 1 = the file as it is
+   write .variate/<set>/plan.json, then 2.<ext>, 3, 4        your actual design work
+node <skill>/variate.mjs check <set>                         lint before you present
+node <skill>/variate.mjs use   <set> <n>                     put one on their page
+   hand it over and wait
+node <skill>/variate.mjs end   [<set>]                       keep what is live, clean up
 ```
 
-`up` prints the exact next command every time; when in doubt, read its block.
+**Every command takes `--root <project>`**, defaulting to the current
+directory. Pass it explicitly: many harnesses reset the working directory
+between calls. `--json` on `status` gives machine output; `--help` lists
+everything.
+
+`--n` counts **positions including the user's original**, so `--n 4` means
+their file plus three new designs. If the user asks for "four new ones", that
+is `--n 5`.
+
 Exit codes: **0** did it, **1** error, **2** nothing to do, **3** the user has
 to act.
 
@@ -96,15 +106,22 @@ is never destroyed, which is why nothing in this tool asks "are you sure".
    - their real copy. Never invent metrics, customers, or testimonials.
 3. **`variate add <file>`**, then write `plan.json` with one short direction
    per position, position 1 being "as it was".
-4. **Draft.** One variant per file. If your harness runs subagents, draft them
-   in parallel, one per subagent, each with an explicit divergence constraint.
-   Each variant appears on the user's page the moment its file lands, so land
-   them as you go rather than in a batch at the end.
-5. **`variate check <set>`** and fix what it reports. If the project has a
-   typecheck or lint script, run it: a variant that does not compile is not a
-   variant.
-6. **Hand it over.** Name what each position is trying, say which you would
-   keep and why, and ask which one. Tell them: arrows or the numbers.
+4. **Draft.** One variant per file, landed as you finish each one: the pager
+   on the card grows as the files land, so the user can see the round filling
+   in. (The page itself only changes when someone switches.) For a big file or
+   a long round, subagents drafting in parallel are worth the setup, one per
+   variant with an explicit divergence constraint; for three short files it is
+   faster to write them yourself.
+5. **`variate check <set>`** and fix what it reports. `check` is a lint, not a
+   compiler: it catches unresolvable imports, missing exports, dependencies you
+   invented, and house-style breaches, but it cannot tell you a file parses. If
+   the project has a typecheck, lint, or build script, run it too.
+6. **Put your recommendation on the page** with `variate use <set> <n>` before
+   you speak, so the user is looking at your best work rather than at what they
+   already had.
+7. **Hand it over.** Name what each position is trying, say which you would
+   keep and why, and ask which one. Tell them: arrows, or the numbers. Say
+   plainly that position 1 is what they had, one key away.
 
 The full craft rules are in `references/craft.md`. Read it before your first
 generative work in a session.
@@ -135,10 +152,11 @@ Between turns, and whenever the user mentions clicking something:
 node <skill>/variate.mjs drain --root <project>
 ```
 
-It prints every queued ask as ONE JSON array and exits 2 when there are none.
-Ack with `--ack <id> --note "<one line for the user>"` folded into the next
-call. Types: `vary` (make N of this file or this selection), `more` (N more on
-an existing set, with `steer` and `from`), `done`.
+It prints every queued ask as ONE JSON array and exits **0**; with nothing
+waiting it prints `[]` and exits **2**, so branch on the exit code. Ack with
+`--ack <id> --note "<one line for the user>"` folded into the next call.
+Types: `vary` (make N of this file or this selection), `more` (N more on an
+existing set, with `steer` and `from`), `done`.
 
 ## Attaching, and leaving
 

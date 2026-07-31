@@ -106,6 +106,17 @@ Every variant file is a complete, drop-in replacement for the target:
 - no edits to shared files. If the idea needs a token change, that is its own
   set on the theme file, not a smuggled edit.
 
+**Where the styles go**, so two variants of the same set never disagree about
+architecture: follow whatever the target file already does. If it uses utility
+classes, use theirs. If it imports a stylesheet or a CSS module, put your rules
+there only if that file belongs to this component alone. If the target relies
+on class names that live in some global stylesheet you must not touch, keep
+each variant self-contained with one scoped `<style>` block inside the file
+(or the framework's scoped-style equivalent). Never create a new shared
+stylesheet, and never make one variant depend on a file another variant
+introduced: each one has to work the moment it is copied over the target, on
+its own.
+
 ## When there is nothing to vary yet
 
 If the user has no project, or the section does not exist, build it first, in
