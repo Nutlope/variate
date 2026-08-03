@@ -36,9 +36,15 @@ node "$V" add "$WS/index.html" --name page --root "$WS" > /dev/null
 cmp -s "$WS/index.html" "$WS/.variate/page/1.html"
 test "$(cat "$WS/.variate/page/target")" = "index.html"
 
-echo "-- add twice is a no-op that says so"
-set +e; node "$V" add "$WS/index.html" --name page --root "$WS" > /dev/null; RC=$?; set -e
+echo "-- a second round on the same file is refused, and points at extending"
+set +e; OUT=$(node "$V" add "$WS/index.html" --name page --root "$WS"); RC=$?; set -e
 test $RC = 2
+echo "$OUT" | grep -q "already varies"
+echo "$OUT" | grep -q "EXTEND"
+# ...even under a different set name, because it is the FILE that collides
+set +e; OUT=$(node "$V" add "$WS/index.html" --name something-else --root "$WS"); RC=$?; set -e
+test $RC = 2
+echo "$OUT" | grep -q "already varies"
 
 echo "-- a set with one variant reports 1/1"
 node "$V" status --root "$WS" --json | J 'j.sets[0].n' | grep -qx 1
@@ -140,6 +146,20 @@ test "$(grep -c 'variate:begin' "$WS/index.html")" = "0"
 grep -q '<h1>two</h1>' "$WS/index.html"
 # The only thing left in the diff is the design decision itself.
 test "$(cd "$WS" && git status --porcelain)" = " M index.html"
+
+echo "-- end <set> closes one round and leaves the others running"
+MULTI=$(mktemp -d)/multi
+mkdir -p "$MULTI"
+printf '<h1>a</h1>\n' > "$MULTI/a.html"; printf '<h1>b</h1>\n' > "$MULTI/b.html"
+node "$V" add "$MULTI/a.html" --root "$MULTI" > /dev/null
+node "$V" add "$MULTI/b.html" --root "$MULTI" > /dev/null
+printf '<h1>a2</h1>\n' > "$MULTI/.variate/a/2.html"
+node "$V" use a 2 --root "$MULTI" > /dev/null
+node "$V" end a --root "$MULTI" | grep -q "variant is gone"
+grep -q '<h1>a2</h1>' "$MULTI/a.html"          # the winner stayed
+test ! -d "$MULTI/.variate/a"
+test -d "$MULTI/.variate/b"                     # the other round is untouched
+node "$V" status --root "$MULTI" --json | J 'j.sets.length' | grep -qx 1
 
 echo "-- and with nothing kept, end leaves the tree exactly as it was"
 WS2=$(mktemp -d)/proj2

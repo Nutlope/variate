@@ -59,17 +59,15 @@ to find it in your source.
 
 ## Install
 
-Any agent that supports the open skill format:
-
 ```bash
-npx skills add <you>/variate -a claude-code -a codex
+git clone <this repo> ~/code/variate
+node ~/code/variate/scripts/install.mjs
 ```
 
-or by hand:
-
-```bash
-git clone <this repo> ~/.claude/skills/variate
-```
+That links it into every agent it finds on the machine (Claude Code, Codex
+CLI, opencode), so `git pull` updates all of them at once. `--dry-run` shows
+what it would do, `--remove` undoes it, `--copy` installs copies instead of
+symlinks.
 
 Anything that can run a shell command works too: `node variate.mjs up` prints
 what to do next, and `AGENTS.md` is the whole contract in one page.

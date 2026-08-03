@@ -71,7 +71,9 @@ their file plus three new designs. If the user asks for "four new ones", that
 is `--n 5`.
 
 Exit codes: **0** did it, **1** error, **2** nothing to do, **3** the user has
-to act.
+to act. **Read them.** In particular, `up` exits 3 when a sandbox will not let
+it start the card: that is not a failure, and every other command still works.
+The user then sees each switch by reloading their page.
 
 ## The one model
 
@@ -128,20 +130,38 @@ is never destroyed, which is why nothing in this tool asks "are you sure".
    plainly that position 1 is what they had, one key away.
 
 The full craft rules are in `references/craft.md`. Read it before your first
-generative work in a session.
+generative work in a session. `references/frameworks.md` covers placing the
+tag by hand; `references/harnesses.md` covers what differs in Codex, Cursor
+and opencode, and is worth a look only when something misbehaves.
 
-## Applying a verdict
+## The verdict, and what follows it
 
 A plain pick needs nothing from you: the user is already on it, and the file
-already says so. Log the decision in your reply.
+already says so. Log it in your reply. The best feedback is compositional:
+"2's layout with 4's stat strip" IS the design, so draw it as the next
+position rather than arguing.
 
-The best feedback is compositional. "2's layout with 4's stat strip" IS the
-design: draw it as the next position rather than arguing.
+Then do not stop dead. Say in one line which of these is next, and let the
+user redirect you:
 
-"More like 3, but calmer" is a new round on the same set. **Extending a set
-needs no command**: write the next numbered file (`5.tsx` after `4.tsx`) and
-append its direction to `plan.json`. The pager picks it up. Tell them the new
-range and what you added.
+1. **Refine the winner**, including "more like 3 but calmer". **Extending a
+   set needs no command**: write the next numbered file (`5.tsx` after
+   `4.tsx`) and append its direction to `plan.json`. Two or three tight
+   positions now, not four wild ones: the question has narrowed.
+2. **Vary the next thing.** `variate add <another file>` makes a second set;
+   the card grows a menu and `[` `]` moves between them. One file, one set:
+   if `add` says the file is already varied, extend that set instead.
+3. **Stop.** `variate end` keeps every live file as it is and removes variate
+   from the project; `variate end <set>` closes one round and leaves the rest.
+   Either way the unused variants are deleted, so say so first if the user
+   might want one back.
+
+Small edits to the winner (a word, a spacing value, a colour) are ordinary
+edits to the live file. Do not open a round for them. A round is for a real
+question with more than one defensible answer.
+
+Between rounds, the live files are ordinary source. The user can commit,
+keep building, or hand them to another tool: nothing is holding them.
 
 ## What the user does without you
 

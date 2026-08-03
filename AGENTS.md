@@ -20,6 +20,15 @@ Each command prints an aligned block telling you what happened and what to run
 next. Exit codes: **0** did it, **1** error, **2** nothing to do, **3** the
 user has to act.
 
+If `up` exits **3**, a sandbox would not let it start the on-page card. That
+is not a failure: `add`, `check`, `use`, `status` and `end` all still work, and
+the user sees each switch by reloading their page. Carry on.
+
+After the user picks one: extend the same set to refine it (write the next
+numbered file and append to `plan.json`), `add` another file to vary something
+else, or `end` to finish. One file, one set: if `add` says the file is already
+varied, extend that set instead.
+
 The model: a set is one target file plus N alternatives in
 `.variate/<set>/`. Variant 1 is the user's file as it was. You write
 `plan.json` (one short direction per position) and then `2.<ext>`, `3`, `4`.

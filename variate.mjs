@@ -117,7 +117,18 @@ async function cmdUp() {
       const l = await liveServer();
       if (l) port = l.port;
     }
-    if (!port) die(`the sidecar did not come up; see ${P.LOG}`);
+    if (!port) {
+      // Some sandboxes (Codex and friends) refuse to keep a detached child
+      // alive or to bind a port. That costs the card, and nothing else: the
+      // whole round still runs from the CLI, so say so and exit 3 rather
+      // than failing hard.
+      key("VARIATE", "the sidecar could not start, so the on-page card is unavailable.");
+      key("WHY", `no background process or no port. Details: ${P.LOG}`);
+      key("STILL", "everything works from here: add, check, use, status, end.");
+      key("HOW", "the user sees each variant by reloading their page after you switch.");
+      key("NEXT", `node ${path.join(HERE, "variate.mjs")} add <a component or page file> --root ${P.ROOT}`);
+      process.exit(3);
+    }
   }
 
   const tagUrl = `http://127.0.0.1:${port}/v.js`;
@@ -193,10 +204,23 @@ function cmdAdd() {
   if (abs !== P.ROOT && !abs.startsWith(P.ROOT + path.sep)) die("that file is outside the project", 3);
   if (!fs.existsSync(abs)) die(`no such file: ${rel}`, 3);
 
+  // Already varying this exact file? Say so by name, whatever the set is
+  // called, and point at extending it. Otherwise a second round on the same
+  // section quietly becomes a second set fighting the first over one file.
+  const owner = listSets(P).find((s) => s.target === abs);
+  if (owner) {
+    key("SET", `${owner.name} already varies ${owner.targetRel} (on ${owner.at ?? "?"} of ${owner.n})`);
+    key("EXTEND", `write ${path.relative(P.ROOT, owner.dir)}/${owner.n + 1}${owner.ext} and append its direction to plan.json`);
+    key("WHY", "one file, one set: a second set on the same file would fight it for the target");
+    process.exit(2);
+  }
+
   const name = slug(flag("name") || path.basename(abs));
   const dir = path.join(P.SETS, name);
   if (fs.existsSync(dir)) {
-    out(`SET       ${name} already exists (${readSet(P, name)?.n ?? 0} variants)`);
+    const other = readSet(P, name);
+    key("SET", `the name "${name}" is taken by ${other?.targetRel ?? "another set"}`);
+    key("FIX", `pass --name <something-else>`);
     process.exit(2);
   }
   const n = Number(flag("n", "4"));
@@ -280,15 +304,17 @@ async function cmdStatus() {
   process.exit(sets.length ? 0 : 2);
 }
 
-function cmdEnd() {
+async function cmdEnd() {
   const only = rest[0] ? slug(rest[0]) : null;
   const sets = listSets(P);
+  const running = !!(await liveServer());
   if (only) {
     const s = readSet(P, only);
     if (!s) die(`no set "${only}"`, 3);
+    const lost = Math.max(0, s.n - 1);
     fs.rmSync(s.dir, { recursive: true, force: true });
     key("KEPT", `${s.targetRel} as it is now (variant ${s.at ?? "your own edit"})`);
-    key("REMOVED", path.relative(P.ROOT, s.dir));
+    key("REMOVED", `${path.relative(P.ROOT, s.dir)}, so the other ${lost} variant${lost === 1 ? " is" : "s are"} gone`);
     process.exit(0);
   }
 
@@ -298,9 +324,10 @@ function cmdEnd() {
   unignoreLine(P.ROOT, ".variate/");
   try { fs.rmSync(P.VAR, { recursive: true, force: true }); } catch { /* ignore */ }
 
+  const lost = sets.reduce((n, s) => n + Math.max(0, s.n - 1), 0);
   key("KEPT", sets.length ? sets.map((s) => s.targetRel).join(", ") : "nothing to keep");
-  key("REMOVED", `.variate/${led?.file ? ` and the tag in ${led.file}` : ""}`);
-  key("NEXT", "stop the sidecar with: pkill -f variate/src/sidecar.mjs");
+  key("REMOVED", `.variate/${led?.file ? ` and the tag in ${led.file}` : ""}${lost ? `, so ${lost} unused variant${lost === 1 ? " is" : "s are"} gone` : ""}`);
+  if (running) key("NEXT", "stop the sidecar with: pkill -f variate/src/sidecar.mjs");
   process.exit(sets.length || led ? 0 : 2);
 }
 
@@ -335,7 +362,7 @@ switch (verb) {
   case "use": await cmdUse(); break;
   case "check": cmdCheck(); break;
   case "status": await cmdStatus(); break;
-  case "end": cmdEnd(); break;
+  case "end": await cmdEnd(); break;
   case "drain": passthrough(["--drain"]); break;
   case "peek": passthrough(["--peek"]); break;
   case "version": out(VERSION); break;
