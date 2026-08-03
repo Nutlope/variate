@@ -92,11 +92,73 @@ async function post(port, pathname, body) {
 // ---------------------------------------------------------------------------
 // up
 
+const STARTER = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Untitled</title>
+</head>
+<body>
+<!-- Nothing here yet. Your agent is about to draft this page, and variate
+     will put four versions of it behind the card at the bottom. -->
+</body>
+</html>
+`;
+
+/** The page a browser would land on when we serve the project. */
+function firstHtml(root) {
+  for (const c of ["index.html", "public/index.html", "src/index.html"]) {
+    if (fs.existsSync(path.join(root, c))) return c;
+  }
+  try {
+    const f = fs.readdirSync(root).find((x) => /\.html?$/i.test(x));
+    if (f) return f;
+  } catch { /* nothing */ }
+  return null;
+}
+
+/** Is there anything here at all that a browser could open? */
+function looksEmpty(root) {
+  const found = detect(root);
+  if (found) return false;
+  const stack = [root];
+  let depth = 0;
+  while (stack.length && depth < 400) {
+    const dir = stack.pop();
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      depth++;
+      if (e.name.startsWith(".") || e.name === "node_modules") continue;
+      if (e.isDirectory()) { stack.push(path.join(dir, e.name)); continue; }
+      if (/\.html?$/i.test(e.name)) return false;
+    }
+  }
+  return true;
+}
+
 async function cmdUp() {
   fs.mkdirSync(P.REQ_DONE, { recursive: true });
 
   const already = await liveServer();
   const wantPort = flag("port") ? Number(flag("port")) : defaultPortFor(P.ROOT);
+
+  // Three shapes of project, and none of them is allowed to dead-end:
+  //   a framework we know   -> their dev server renders; we only add the tag
+  //   plain HTML, no server -> we serve their real files, so there is a page
+  //   nothing at all        -> we scaffold one page, then serve it
+  const found = detect(P.ROOT);
+  const framework = found && found.stack !== "static";
+  const empty = !framework && looksEmpty(P.ROOT);
+  let scaffolded = null;
+  if (empty && !args["no-scaffold"]) {
+    const page = path.join(P.ROOT, "index.html");
+    fs.mkdirSync(P.ROOT, { recursive: true });
+    fs.writeFileSync(page, STARTER);
+    scaffolded = "index.html";
+  }
+  const serve = !framework;
 
   let port;
   if (already) {
@@ -108,7 +170,8 @@ async function cmdUp() {
       key("PORT", `${wantPort} is variate for ${squat.root}; taking the next free port.`);
     }
     const logFd = fs.openSync(P.LOG, "a");
-    const child = spawn(process.execPath, [path.join(HERE, "src", "sidecar.mjs"), "--root", P.ROOT, "--port", String(wantPort)],
+    const child = spawn(process.execPath,
+      [path.join(HERE, "src", "sidecar.mjs"), "--root", P.ROOT, "--port", String(wantPort), ...(serve ? ["--serve"] : [])],
       { detached: true, stdio: ["ignore", logFd, logFd] });
     child.unref();
     const deadline = Date.now() + 6000;
@@ -131,15 +194,18 @@ async function cmdUp() {
     }
   }
 
+  // Served pages load the card from their own origin, so nothing is
+  // cross-origin and the tag survives the port moving.
+  // Served projects get the tag injected at request time, so their files
+  // never mention variate and a variant can be a whole-file replacement
+  // without losing the card. Only a project with its own dev server is
+  // written to.
   const tagUrl = `http://127.0.0.1:${port}/v.js`;
-  const found = detect(P.ROOT);
+  const target = serve ? null : found;
   let attached = readJsonSafe(P.ATTACH);
 
-  if (args["no-attach"]) {
+  if (args["no-attach"] || !target?.file) {
     // leave the project alone
-  } else if (!found) {
-    key("STACK", "not detected. Add this tag to your page yourself, in dev only:");
-    key("", `<script src="${tagUrl}"></script>`);
   } else if (attached?.file && isAttached(P.ROOT, attached.file)) {
     // already wired; refresh the port in case it moved
     const cur = readSafe(path.join(P.ROOT, attached.file)) ?? "";
@@ -148,9 +214,9 @@ async function cmdUp() {
       atomicWrite(path.join(P.ROOT, attached.file), fresh);
     }
   } else {
-    const r = attach(P.ROOT, found, tagUrl);
+    const r = attach(P.ROOT, target, tagUrl);
     if (r.error) die(r.error, 3);
-    attached = { stack: found.stack, file: found.file, created: !!r.created, tagUrl, at: new Date().toISOString() };
+    attached = { stack: target.stack, file: target.file, created: !!r.created, tagUrl, at: new Date().toISOString() };
     atomicWrite(P.ATTACH, JSON.stringify(attached, null, 2) + "\n");
   }
 
@@ -159,12 +225,19 @@ async function cmdUp() {
   const sets = listSets(P);
   const cardSeen = readJsonSafe(P.SERVER_JSON);
 
-  key("VARIATE", `up on http://127.0.0.1:${port}  ·  root ${P.ROOT}`);
-  if (attached) key("TAG", `${attached.file}  (dev only, marker-bracketed; \`variate end\` removes it)`);
+  const url = `http://127.0.0.1:${port}`;
+  if (serve) key("PAGE", `${url}   (variate is serving your files; open this)`);
+  else key("VARIATE", `up on ${url}  ·  your own dev server renders the page`);
+  key("ROOT", P.ROOT);
+  if (scaffolded) key("NEW", `this project was empty, so ${scaffolded} was created for you to design into`);
+  if (attached) key("TAG", `${attached.file}  (marker-bracketed; \`variate end\` removes it)`);
+  else if (serve) key("CARD", "injected as the page is served, so your files never mention variate");
   key("SETS", sets.length ? sets.map((s) => `${s.name} on ${s.at ?? "?"} of ${s.n}`).join(" · ") : "none yet");
   key("NEXT", sets.length
-    ? "flip variants on your page: ← →, or 1-9"
-    : `node ${path.join(HERE, "variate.mjs")} add <a component or page file> --root ${P.ROOT}`);
+    ? "flip variants on the page: ← →, or 1-9"
+    : scaffolded
+      ? `node ${path.join(HERE, "variate.mjs")} add index.html --new --n 4 --root ${P.ROOT}   then write 1..4`
+      : `node ${path.join(HERE, "variate.mjs")} add <a component or page file> --root ${P.ROOT}`);
   key("KEYS", "← → flip · 1-9 jump · [ ] section · esc hide · ? help");
   if (ig.added) key("IGNORE", "added .variate/ to .gitignore");
   process.exit(already ? 2 : 0);
@@ -202,7 +275,10 @@ function cmdAdd() {
   if (!rel) die("usage: variate add <file> [--n 4]");
   const abs = path.resolve(P.ROOT, rel);
   if (abs !== P.ROOT && !abs.startsWith(P.ROOT + path.sep)) die("that file is outside the project", 3);
-  if (!fs.existsSync(abs)) die(`no such file: ${rel}`, 3);
+  // --new: nothing exists yet, so every position is a fresh design and there
+  // is no "as it was" baseline to preserve. Designing from nothing is a first
+  // class case, not an error.
+  const fresh = !!args.new || !fs.existsSync(abs);
 
   // Already varying this exact file? Say so by name, whatever the set is
   // called, and point at extending it. Otherwise a second round on the same
@@ -228,14 +304,22 @@ function cmdAdd() {
 
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "target"), path.relative(P.ROOT, abs) + "\n");
-  fs.copyFileSync(abs, path.join(dir, `1${ext}`));
+  if (!fresh) fs.copyFileSync(abs, path.join(dir, `1${ext}`));
+  // A scaffold placeholder is not the user's work, so do not let the first
+  // switch adopt it as a design.
+  else if (readSafe(abs) === STARTER) fs.rmSync(abs, { force: true });
 
-  key("SET", `${name}  ·  ${path.relative(P.ROOT, abs)}`);
-  key("SLOT 1", `your file as it is now (${(fs.statSync(abs).size / 1024).toFixed(1)} KB), never edited`);
-  key("WRITE", `${path.relative(P.ROOT, dir)}/plan.json  then  ${[...Array(Math.max(0, n - 1))].map((_, i) => `${i + 2}${ext}`).join("  ")}`);
+  key("SET", `${name}  ·  ${path.relative(P.ROOT, abs)}${fresh ? "  (new: nothing there yet)" : ""}`);
+  if (fresh) key("SLOTS", `${n} fresh designs. Position 1 is a real design too, not a baseline.`);
+  else key("SLOT 1", `your file as it is now (${(fs.statSync(abs).size / 1024).toFixed(1)} KB), never edited`);
+  const first = fresh ? 1 : 2;
+  key("WRITE", `${path.relative(P.ROOT, dir)}/plan.json  then  ${[...Array(Math.max(0, n - first + 1))].map((_, i) => `${i + first}${ext}`).join("  ")}`);
   key("CARD", `the pager grows to ${n} as each file lands; the page changes only when you switch`);
   key("MORE", `to extend this round later, write ${n + 1}${ext} and append its direction to plan.json. No command needed.`);
-  if (!referenced(abs)) {
+  // The page variate serves (or attached the tag to) is the page by
+  // definition, so never claim nothing renders it.
+  const isEntry = readJsonSafe(P.ATTACH)?.file === path.relative(P.ROOT, abs);
+  if (!isEntry && !referenced(abs)) {
     key("HEED", "nothing in this project seems to import that file, so the user may not see it on their page");
   }
   process.exit(0);
@@ -299,7 +383,11 @@ async function cmdStatus() {
   key("TAG", att?.file ? `${att.file}${isAttached(P.ROOT, att.file) ? "" : "  (MISSING: run variate up)"}` : "not attached");
   if (!sets.length) key("SETS", "none");
   for (const s of sets) {
-    key(s.name, `on ${s.at ?? "?"} of ${s.n}  ·  ${s.targetRel}${s.at == null ? "  (hand-edited; the next switch keeps it)" : ""}`);
+    const where = s.n === 0 ? "nothing drafted yet"
+      : !s.exists ? `${s.n} drafted, none on the page yet`
+      : s.at == null ? `on your own edit, of ${s.n} (the next switch keeps it)`
+      : `on ${s.at} of ${s.n}`;
+    key(s.name, `${where}  ·  ${s.targetRel}`);
   }
   process.exit(sets.length ? 0 : 2);
 }

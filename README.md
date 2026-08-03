@@ -41,6 +41,15 @@ In your agent, in a project you are already running:
 /variate give me four takes on the hero
 ```
 
+Or in an empty folder, with nothing at all:
+
+```
+/variate design a landing page for my invoicing tool
+```
+
+variate writes a page, serves it, and puts four fresh designs behind the card.
+There is no setup step and nothing to scaffold first.
+
 Or drive it yourself:
 
 ```bash

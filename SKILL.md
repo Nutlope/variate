@@ -1,14 +1,15 @@
 ---
 name: variate
 description: >
-  Put four design variations of a section, a page, or a theme in front of the
-  user on their own dev server, and let them flip between them with arrow keys
-  from a small card at the bottom of the page. Use when the user wants design
-  variations, alternatives, or A/B options of something they are building;
-  when they ask to try a different hero, layout, palette, or section; when
-  they want to compare directions before committing; or to continue an
-  existing variate session. Works on any stack: the variations are real files
-  in their repo and switching just swaps one.
+  Put four real design variations in front of the user on a live localhost and
+  let them flip between them with arrow keys from a small card at the bottom of
+  the page. Use when the user wants design variations, alternatives, or options
+  to choose between; when they ask to try a different hero, layout, palette,
+  section, or page; when they want to design something new and see a few
+  directions; or to continue an existing variate session. It works whether or
+  not anything exists yet: in an empty folder it serves a page and drafts four
+  fresh designs, and in a real project it varies a file in place. Any stack.
+  The variations are real files and switching just swaps one.
 license: MIT
 compatibility: Requires Node.js 18+ and a dev server the user already runs.
 metadata:
@@ -54,6 +55,7 @@ Obey these even if you read nothing else.
 ```
 node <skill>/variate.mjs up    --root <project> [--port N]   card appears on their page
 node <skill>/variate.mjs add   <file> [--n 4]                variant 1 = the file as it is
+node <skill>/variate.mjs add   <file> --new [--n 4]          nothing there yet: all positions fresh
    write .variate/<set>/plan.json, then 2.<ext>, 3, 4        your actual design work
 node <skill>/variate.mjs check <set>                         lint before you present
 node <skill>/variate.mjs use   <set> <n>                     put one on their page
@@ -74,6 +76,34 @@ Exit codes: **0** did it, **1** error, **2** nothing to do, **3** the user has
 to act. **Read them.** In particular, `up` exits 3 when a sandbox will not let
 it start the card: that is not a failure, and every other command still works.
 The user then sees each switch by reloading their page.
+
+## Starting from nothing
+
+There is always something to attach to. `variate up` handles three shapes of
+project and none of them dead-ends:
+
+- **A framework it knows** (Next, Vite, Astro, SvelteKit, Nuxt, Rails): their
+  dev server renders the page and `up` only adds the tag.
+- **Plain HTML with no dev server**: variate serves their real files itself
+  and injects the card as it serves, so their HTML never mentions variate.
+- **An empty directory**: it writes `index.html` and serves that, so there is
+  a page and a URL within seconds.
+
+In the empty case do NOT ask what stack they want or scaffold a framework
+unless they ask for one. Run `up`, then:
+
+```
+variate add index.html --new --n 4 --root <project>
+```
+
+`--new` means every position is a fresh design and there is no "as it was"
+baseline: write `1`, `2`, `3`, `4` as four genuinely different answers to the
+brief, then `use` your favourite and hand it over. This is the fastest path
+from a sentence to four real designs on a real URL, and it is a first class
+flow, not a fallback.
+
+If the user does want a framework, scaffold it their way first (`npx
+create-next-app` and so on), let it run, and then vary a component of it.
 
 ## The one model
 
@@ -148,7 +178,9 @@ user redirect you:
    set needs no command**: write the next numbered file (`5.tsx` after
    `4.tsx`) and append its direction to `plan.json`. Two or three tight
    positions now, not four wild ones: the question has narrowed.
-2. **Vary the next thing.** `variate add <another file>` makes a second set;
+2. **Vary the next thing**, existing or not: `--new` works for a section that
+   does not exist yet, so "now add a pricing section" is a round too.
+   `variate add <another file>` makes a second set;
    the card grows a menu and `[` `]` moves between them. One file, one set:
    if `add` says the file is already varied, extend that set instead.
 3. **Stop.** `variate end` keeps every live file as it is and removes variate

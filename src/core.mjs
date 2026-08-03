@@ -104,9 +104,11 @@ export function readSet(P, name) {
 
   const ext = path.extname(target);
   const variants = [];
+  // Scan past a gap: a set started from nothing has no variant until the
+  // agent writes one, and positions can be written in any order.
   for (let n = 1; n <= 99; n++) {
     const f = path.join(dir, `${n}${ext}`);
-    if (!fs.existsSync(f)) break;
+    if (!fs.existsSync(f)) continue;
     variants.push({ n, file: f, sha: sha(readBytes(f) ?? Buffer.alloc(0)) });
   }
   const plan = readJsonSafe(path.join(dir, "plan.json"));
@@ -138,7 +140,9 @@ export function setSummary(s) {
   return {
     name: s.name,
     target: s.targetRel,
-    n: s.n,
+    n: s.n,                                   // how many exist
+    have: s.variants.map((v) => v.n),         // which positions exist: they can arrive out of order
+    max: s.variants.length ? s.variants[s.variants.length - 1].n : 0,
     at: s.at,
     plan: s.plan,
     missing: !s.exists,

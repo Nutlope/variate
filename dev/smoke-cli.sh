@@ -20,15 +20,14 @@ echo "-- a project with no sets: status exits 2"
 set +e; node "$V" status --root "$WS" > /dev/null; RC=$?; set -e
 test $RC = 2
 
-echo "-- up attaches the tag, ignores .variate, and is idempotent"
+echo "-- a static project is served with the card injected, and its files are untouched"
 node "$V" up --root "$WS" --port $PORT > /dev/null
-grep -q 'variate:begin' "$WS/index.html"
-grep -q '127.0.0.1' "$WS/index.html"
+! grep -q 'variate' "$WS/index.html"
+test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$PORT/)" = "200"
+curl -s http://127.0.0.1:$PORT/ | grep -q 'src="/v.js"'
 grep -qx '.variate/' "$WS/.gitignore"
-test "$(grep -c 'variate:begin' "$WS/index.html")" = "1"
 set +e; node "$V" up --root "$WS" --port $PORT > /dev/null; RC=$?; set -e
 test $RC = 2
-test "$(grep -c 'variate:begin' "$WS/index.html")" = "1"
 test "$(grep -c '^\.variate/$' "$WS/.gitignore")" = "1"
 
 echo "-- add copies the file as variant 1 byte for byte"
@@ -105,6 +104,42 @@ node "$V" check hero --root "$CODE" | grep -q 'not in package.json'
 # a variant that drops the export the app imports must warn
 printf 'export function Other(){ return null }\n' > "$CODE/.variate/hero/4.jsx"
 node "$V" check hero --root "$CODE" | grep -q 'does not export Hero'
+
+echo "-- an empty project is never a dead end: up scaffolds a page and serves it"
+EMPTY=$(mktemp -d)/empty
+mkdir -p "$EMPTY"
+EPORT=$((PORT + 11))
+node "$V" up --root "$EMPTY" --port $EPORT > /tmp/variate-empty.txt
+grep -q "PAGE" /tmp/variate-empty.txt
+grep -q "was empty" /tmp/variate-empty.txt
+test -f "$EMPTY/index.html"
+# the page is really served, and the card is injected rather than written in
+test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$EPORT/)" = "200"
+curl -s http://127.0.0.1:$EPORT/ | grep -q 'src="/v.js"'
+! grep -q 'v.js' "$EMPTY/index.html"
+
+echo "-- add --new makes every position a fresh design, with no baseline"
+node "$V" add index.html --new --n 4 --root "$EMPTY" | grep -q "fresh designs"
+test ! -f "$EMPTY/.variate/index/1.html"     # nothing copied in
+test ! -f "$EMPTY/index.html"                 # the placeholder is not a design
+printf '<html><body><h1>one</h1></body></html>\n' > "$EMPTY/.variate/index/1.html"
+printf '<html><body><h1>three</h1></body></html>\n' > "$EMPTY/.variate/index/3.html"
+node "$V" status --root "$EMPTY" | grep -q "none on the page yet"
+
+echo "-- the URL holds open with the card while nothing is drafted yet"
+test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$EPORT/)" = "200"
+curl -s http://127.0.0.1:$EPORT/ | grep -q 'src="/v.js"'
+# but a genuinely missing asset is still a 404, not a silent 200
+test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$EPORT/nope.css)" = "404"
+
+echo "-- positions may land out of order, and the card is told which exist"
+node "$V" use index 3 --root "$EMPTY" > /dev/null
+grep -q '<h1>three</h1>' "$EMPTY/index.html"
+curl -s "http://127.0.0.1:$EPORT/state?t=$(cat "$EMPTY/.variate/token")" | J 'j.sets[0].have.join(",")' | grep -qx "1,3"
+curl -s "http://127.0.0.1:$EPORT/state?t=$(cat "$EMPTY/.variate/token")" | J 'j.sets[0].at' | grep -qx 3
+# switching still leaves the card on the page, because it was never in the file
+curl -s http://127.0.0.1:$EPORT/ | grep -q 'src="/v.js"'
+pkill -f "sidecar.mjs --root $EMPTY" 2>/dev/null || true
 
 echo "-- attach and eject on an indented JSX layout is byte-identical"
 JSX=$(mktemp -d)/next

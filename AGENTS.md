@@ -35,6 +35,12 @@ The model: a set is one target file plus N alternatives in
 Switching copies a variant over the target file; the user's own dev server
 re-renders it.
 
+**Nothing there yet is fine.** In an empty folder, `up` writes an
+`index.html` and serves it, so there is always a page and a URL. Then
+`add index.html --new --n 4` makes every position a fresh design with no
+baseline: write `1` through `4` as four different answers to the brief. Do
+not scaffold a framework unless the user asks for one.
+
 Rules that matter most:
 
 1. Never edit or delete variant 1, and never write the target file directly

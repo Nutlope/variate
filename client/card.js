@@ -330,7 +330,7 @@ button.row .n{ margin-left: auto; font-size: 10px; opacity: .7 }
   function go(n) {
     const s = active();
     if (!s || busy) return;
-    if (n < 1 || n > s.n) return;
+    if (!(s.have || []).includes(n)) return;
     if (n === s.at) return;
 
     busy = true;
@@ -464,9 +464,15 @@ button.row .n{ margin-left: auto; font-size: 10px; opacity: .7 }
     refs.nameBtn.title = sets.length > 1 ? "change section  [ ]" : s.target;
 
     // pager: one chip per position, plus arrows
+    // Chips run to the highest position the round will have, so the pager
+    // shows the shape of the round while it is still being drafted. A
+    // position with no file yet is a ghost, and positions can land in any
+    // order (parallel drafting), so membership is what counts, not the count.
+    const have = s.have || [];
+    const upto = Math.max(s.max || 0, s.plan.length || 0, 1);
     const want = [];
     want.push({ k: "prev", label: "\u2039", nav: true });
-    for (let i = 1; i <= Math.max(s.n, s.plan.length || s.n); i++) want.push({ k: "p" + i, n: i });
+    for (let i = 1; i <= upto; i++) want.push({ k: "p" + i, n: i, landed: have.includes(i) });
     want.push({ k: "next", label: "\u203a", nav: true });
 
     if (refs.chips.length !== want.length) {
@@ -482,7 +488,7 @@ button.row .n{ margin-left: auto; font-size: 10px; opacity: .7 }
       const b = refs.chips[i];
       if (w.nav) { b.textContent = w.label; b.setAttribute("aria-label", w.k === "prev" ? "previous" : "next"); return; }
       b.textContent = String(w.n);
-      const landed = w.n <= s.n;
+      const landed = w.landed;
       b.disabled = !landed;
       b.setAttribute("aria-current", String(landed && w.n === s.at));
       const lbl = s.plan[w.n - 1];
@@ -531,14 +537,16 @@ button.row .n{ margin-left: auto; font-size: 10px; opacity: .7 }
     refs.thumb.style.width = chip.offsetWidth + "px";
   }
 
+  // Step through the positions that actually exist, so a gap or a still
+  // drafting position never swallows an arrow press.
   function step(d) {
     const s = active();
-    if (!s) return;
-    const from = s.at || 1;
-    let n = from + d;
-    if (n < 1) n = s.n;
-    if (n > s.n) n = 1;
-    go(n);
+    const have = s?.have || [];
+    if (!have.length) return;
+    const i = have.indexOf(s.at);
+    const next = i === -1 ? (d > 0 ? have[0] : have[have.length - 1])
+      : have[(i + d + have.length) % have.length];
+    go(next);
   }
 
   function cycleSet(d) {

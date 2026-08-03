@@ -54,7 +54,67 @@ function corsHeaders(req) {
 
 // ---------------------------------------------------------------------------
 
-export function startSidecar({ root, port, appUrl = null }) {
+// Serving the project itself, for a page that has no dev server of its own
+// (a plain HTML site, or one variate just scaffolded). This is not a studio:
+// it serves the user's real files, unmodified, at the same origin as the card,
+// which also means the card's own calls are same-origin and CORS never enters
+// the picture. Any project with a real dev server is never served from here.
+const STATIC_MIME = {
+  ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
+  ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png",
+  ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
+  ".avif": "image/avif", ".gif": "image/gif", ".ico": "image/x-icon",
+  ".woff": "font/woff", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8",
+};
+
+// When variate serves the page, the tag is injected here rather than written
+// into the file. That keeps the user's HTML free of variate entirely, which
+// matters most when the page IS the file being varied: a variant is a whole
+// file replacement, so a tag stored in it would vanish on the first switch.
+function withCard(html) {
+  const tag = '<script src="/v.js"></script>';
+  if (html.includes('src="/v.js"')) return html;
+  const i = html.toLowerCase().lastIndexOf("</body>");
+  return i === -1 ? html + "\n" + tag + "\n" : html.slice(0, i) + tag + "\n" + html.slice(i);
+}
+
+const HOLDING = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Waiting for the first design</title>
+<style>
+  html,body{height:100%;margin:0}
+  body{display:grid;place-items:center;background:#f7f5f1;color:#1a1815;
+    font:400 15px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace}
+  p{opacity:.55;letter-spacing:.02em}
+</style></head>
+<body><p>drafting</p></body></html>
+`;
+
+function serveStatic(root, urlPath, res, send) {
+  let rel = decodeURIComponent(urlPath);
+  if (rel.endsWith("/")) rel += "index.html";
+  const file = path.normalize(path.join(root, rel));
+  if (file !== root && !file.startsWith(root + path.sep)) return send(res, 403, "no");
+  let target = file;
+  try { if (fs.statSync(target).isDirectory()) target = path.join(target, "index.html"); } catch { /* below */ }
+  // The entry page can be legitimately absent for a moment: a set drafted
+  // from nothing has no file until its first switch. Hold the URL open with
+  // the card on it rather than showing a 404 that reads as broken.
+  if (!fs.existsSync(target) && path.resolve(target) === path.join(root, "index.html")) {
+    return send(res, 200, withCard(HOLDING), { "Content-Type": STATIC_MIME[".html"] });
+  }
+  if (!fs.existsSync(target)) return send(res, 404, "not found");
+  const ext = path.extname(target).toLowerCase();
+  const type = STATIC_MIME[ext] ?? "application/octet-stream";
+  if (ext === ".html" || ext === ".htm") {
+    return send(res, 200, withCard(fs.readFileSync(target, "utf8")), { "Content-Type": type });
+  }
+  return send(res, 200, fs.readFileSync(target), { "Content-Type": type });
+}
+
+export function startSidecar({ root, port, appUrl = null, serve = false }) {
   const P = paths(root);
   fs.mkdirSync(P.REQ_DONE, { recursive: true });
   fs.mkdirSync(path.dirname(P.HEARTBEAT), { recursive: true });
@@ -171,6 +231,8 @@ export function startSidecar({ root, port, appUrl = null }) {
           req.on("close", () => clients.delete(res));
           return;
         }
+        // Anything else is the user's own page, when we are serving it.
+        if (serve) return serveStatic(P.ROOT, p, res, send);
         return send(res, 404, "not found", cors);
       }
 
@@ -206,7 +268,7 @@ export function startSidecar({ root, port, appUrl = null }) {
         else reject(e);
       });
       server.listen(want, "127.0.0.1", () => {
-        atomicWrite(P.SERVER_JSON, JSON.stringify({ pid: process.pid, port: want, root: P.ROOT, startedAt: started, version: VERSION }, null, 2) + "\n");
+        atomicWrite(P.SERVER_JSON, JSON.stringify({ pid: process.pid, port: want, root: P.ROOT, startedAt: started, version: VERSION, serve }, null, 2) + "\n");
         resolve({
           port: want, token, server,
           state: computeState,
@@ -232,6 +294,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     root: a.root && a.root !== true ? a.root : ".",
     port: a.port && a.port !== true ? Number(a.port) : undefined,
     appUrl: a["app-url"] && a["app-url"] !== true ? String(a["app-url"]) : null,
+    serve: !!a.serve,
   });
   console.log(`variate sidecar on http://127.0.0.1:${out.port}`);
 }
