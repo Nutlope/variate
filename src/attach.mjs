@@ -91,6 +91,25 @@ export function snippetFor(stack, tagUrl) {
 
 const markerRe = () => new RegExp(`[^\\n]*${BEGIN}[\\s\\S]*?${END}[^\\n]*\\n?`, "m");
 
+/**
+ * Insert whole lines ABOVE the line that `at` falls on, matched to that
+ * line's indentation. Splitting a line in the middle (which is what a naive
+ * slice at the index of `</body>` does) strands the closing tag's indent
+ * above the insert, so removing the block later cannot restore the file
+ * byte for byte. The empty-diff promise depends on this being exact.
+ */
+function insertBefore(src, at, snippet) {
+  const lineStart = src.lastIndexOf("\n", at) + 1;
+  const lead = src.slice(lineStart, at);
+  const indent = /^\s*$/.test(lead) ? lead : "";
+
+  const lines = snippet.replace(/\n$/, "").split("\n");
+  const own = Math.min(...lines.filter((l) => l.trim()).map((l) => l.match(/^ */)[0].length));
+  const body = lines.map((l) => (l.trim() ? indent + l.slice(own) : "")).join("\n");
+
+  return src.slice(0, lineStart) + body + "\n" + src.slice(lineStart);
+}
+
 export function isAttached(root, file) {
   const src = readSafe(path.join(root, file));
   return !!src && src.includes(BEGIN);
@@ -127,14 +146,14 @@ export function attach(root, { stack, file, create }, tagUrl) {
     }
     lines.splice(at, 0, snippet.replace(/\n$/, ""));
     out = lines.join("\n");
-  } else if (stack === "next-app" || stack === "next-pages" || stack === "astro" || stack === "sveltekit") {
-    const i = src.lastIndexOf("</body>");
-    if (i !== -1) out = src.slice(0, i) + snippet + src.slice(i);
-    else out = src + "\n" + snippet;
   } else {
     const i = src.lastIndexOf("</body>");
-    if (i === -1) return { error: `no </body> in ${file}; add the tag by hand (see references/frameworks.md)` };
-    out = src.slice(0, i) + snippet + src.slice(i);
+    if (i === -1) {
+      if (stack === "next-app" || stack === "next-pages" || stack === "astro" || stack === "sveltekit") out = src + "\n" + snippet;
+      else return { error: `no </body> in ${file}; add the tag by hand (see references/frameworks.md)` };
+    } else {
+      out = insertBefore(src, i, snippet);
+    }
   }
   atomicWrite(abs, out);
   return { ok: true, file };

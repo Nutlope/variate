@@ -94,15 +94,44 @@ export function checkVariant(P, set, variant, baselineSrc, deps) {
  * rather than letting "no warnings" imply the file compiles.
  */
 export function parserFor(P) {
-  for (const rel of ["node_modules/.bin/esbuild", "node_modules/esbuild/bin/esbuild"]) {
-    const bin = path.join(P.ROOT, rel);
-    if (fs.existsSync(bin)) return { kind: "esbuild", bin };
+  // TypeScript first: every Next, Vite-TS, Astro and SvelteKit project ships
+  // it, it parses tsx/jsx natively, and it runs in-process. Next in
+  // particular has no esbuild (it uses its own SWC binding), so looking only
+  // for esbuild would miss the most common stack there is.
+  const tsDir = path.join(P.ROOT, "node_modules", "typescript");
+  if (fs.existsSync(path.join(tsDir, "lib", "typescript.js"))) return { kind: "typescript", dir: tsDir };
+  for (const rel = "node_modules/.bin/esbuild", bin = path.join(P.ROOT, rel); fs.existsSync(bin); ) {
+    return { kind: "esbuild", bin };
   }
   return null;
 }
 
+// Only these are worth handing to a JS/TS parser. A .css, .vue, .svelte or
+// .astro file is not JavaScript, and parsing one produces a confident, wrong
+// "does not parse" that would send an agent chasing a bug it did not write.
+const PARSEABLE = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
+
 function parseWith(parser, file, ext) {
-  const loader = { ".jsx": "jsx", ".tsx": "tsx", ".ts": "ts", ".mjs": "js", ".js": "js", ".cjs": "js" }[ext.toLowerCase()];
+  const e = ext.toLowerCase();
+  if (!PARSEABLE.has(e)) return null;
+  if (parser.kind === "typescript") {
+    const script = `
+      const ts = require(${JSON.stringify(parser.dir)});
+      const fs = require("fs");
+      const f = ${JSON.stringify(file)};
+      const kind = ${JSON.stringify(e)} === ".tsx" || ${JSON.stringify(e)} === ".jsx" ? ts.ScriptKind.TSX
+        : ${JSON.stringify(e)} === ".ts" ? ts.ScriptKind.TS : ts.ScriptKind.JS;
+      const sf = ts.createSourceFile(f, fs.readFileSync(f, "utf8"), ts.ScriptTarget.Latest, true, kind);
+      const d = sf.parseDiagnostics || [];
+      if (d.length) {
+        const m = ts.flattenDiagnosticMessageText(d[0].messageText, " ");
+        const line = sf.getLineAndCharacterOfPosition(d[0].start || 0).line + 1;
+        process.stdout.write("line " + line + ": " + m);
+      }`;
+    const r = spawnSync(process.execPath, ["-e", script], { encoding: "utf8" });
+    return r.stdout ? r.stdout.trim().slice(0, 120) : null;
+  }
+  const loader = { ".jsx": "jsx", ".tsx": "tsx", ".ts": "ts", ".mjs": "js", ".js": "js", ".cjs": "js" }[e];
   if (!loader) return null;
   const r = spawnSync(parser.bin, [file, `--loader:${ext}=${loader}`, "--outfile=/dev/null"], { encoding: "utf8" });
   if (r.status === 0) return null;

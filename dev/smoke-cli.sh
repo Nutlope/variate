@@ -100,6 +100,31 @@ node "$V" check hero --root "$CODE" | grep -q 'not in package.json'
 printf 'export function Other(){ return null }\n' > "$CODE/.variate/hero/4.jsx"
 node "$V" check hero --root "$CODE" | grep -q 'does not export Hero'
 
+echo "-- attach and eject on an indented JSX layout is byte-identical"
+JSX=$(mktemp -d)/next
+mkdir -p "$JSX/app"
+printf '{"name":"n"}\n' > "$JSX/package.json"
+printf 'export default {}\n' > "$JSX/next.config.ts"
+cat > "$JSX/app/layout.tsx" <<'TSX'
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        {children}
+      </body>
+    </html>
+  );
+}
+TSX
+cp "$JSX/app/layout.tsx" "$JSX/before.txt"
+node "$V" up --root "$JSX" --port $((PORT + 7)) > /dev/null
+grep -q 'variate:begin' "$JSX/app/layout.tsx"
+# the closing tag keeps its own indentation: the block goes above it, not through it
+grep -q '^      </body>$' "$JSX/app/layout.tsx"
+node "$V" end --root "$JSX" > /dev/null
+cmp -s "$JSX/before.txt" "$JSX/app/layout.tsx"
+pkill -f "sidecar.mjs --root $JSX" 2>/dev/null || true
+
 echo "-- add says so when nothing in the project imports the target"
 printf 'export function Orphan(){ return null }\n' > "$CODE/src/components/Orphan.jsx"
 node "$V" add "$CODE/src/components/Orphan.jsx" --root "$CODE" | grep -q "nothing in this project seems to import"

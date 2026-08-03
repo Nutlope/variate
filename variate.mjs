@@ -251,9 +251,13 @@ function cmdCheck() {
     }
   }
   // Say what was actually examined: "no warnings" must never read as "it builds".
-  const scope = parserFor(P)
-    ? "parsed with your esbuild, plus imports, exports and house style"
-    : "imports, exports and house style; NOT parsed (no parser in this project, so run your own build)";
+  const parser = parserFor(P);
+  const anyJs = names.some((n) => /\.(ts|tsx|js|jsx|mjs|cjs)$/i.test(readSet(P, n)?.ext ?? ""));
+  const scope = parser && anyJs
+    ? `parsed with your ${parser.kind}, plus imports, exports and house style`
+    : anyJs
+      ? "imports, exports and house style; NOT parsed (no parser in this project, so run your own build)"
+      : "imports and house style (not a JavaScript set, so nothing to parse)";
   key("CHECK", `${names.length} set${names.length === 1 ? "" : "s"}${warned ? "" : ", no warnings"}  ·  ${scope}`);
   process.exit(0);
 }

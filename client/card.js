@@ -268,7 +268,10 @@ button.row .n{ margin-left: auto; font-size: 10px; opacity: .7 }
   // state
 
   let state = null;         // last /state payload
-  let cur = null;           // active set name
+  // Which set you were looking at survives a reload: a reload is often OUR
+  // doing (the no-HMR fallback), and coming back on a different set than you
+  // left reads as the card losing your place.
+  let cur = sessionStorage.getItem("variate.set") || null;
   let busy = false;
   let collapsed = sessionStorage.getItem("variate.collapsed") === "1";
   let menuOpen = false;
@@ -370,9 +373,23 @@ button.row .n{ margin-left: auto; font-size: 10px; opacity: .7 }
     return n + "|" + head;
   }
 
+  // Does this page have a dev server that will re-render on its own? If it
+  // does, reloading is the wrong move: HMR keeps scroll position and client
+  // state, and a cold module compile can take several seconds, which is
+  // longer than any reload deadline worth having for a static page.
+  function hasHMR() {
+    if (window.__NEXT_DATA__ || window.next || document.querySelector('script[src*="/_next/static/"]')) return true;
+    if (window.__vite_plugin_react_preamble_installed__ || document.querySelector('script[src*="/@vite/client"], script[src*="/@id/"]')) return true;
+    if (window.__astro_dev_toolbar__ || document.querySelector('script[src*="astro"]')) return true;
+    if (window.__webpack_require__ || window.webpackHotUpdate) return true;
+    return false;
+  }
+
   function waitForRender() {
     const before = fingerprint();
     const started = Date.now();
+    const hmr = hasHMR();
+    const deadline = hmr ? 8000 : 900;
     let settled = false;
     const done = (reload) => {
       if (settled) return;
@@ -394,7 +411,12 @@ button.row .n{ margin-left: auto; font-size: 10px; opacity: .7 }
     const poll = () => {
       if (settled) return;
       if (fingerprint() !== before) return done(false);
-      if (Date.now() - started > 900) return done(true);
+      if (Date.now() - started > deadline) {
+        // With HMR, a slow answer means a cold compile, not a dead server:
+        // wait it out rather than reloading over the top of it.
+        if (hmr) { note("your dev server is still compiling that one", { ms: 2600 }); return done(false); }
+        return done(true);
+      }
       setTimeout(poll, 120);
     };
     setTimeout(poll, 120);
@@ -524,6 +546,7 @@ button.row .n{ margin-left: auto; font-size: 10px; opacity: .7 }
     if (sets.length < 2) return;
     const i = Math.max(0, sets.findIndex((x) => x.name === active()?.name));
     cur = sets[(i + d + sets.length) % sets.length].name;
+    sessionStorage.setItem("variate.set", cur);
     sig = "";
     render();
     note(cur + " · " + (active()?.target || ""));
@@ -549,7 +572,7 @@ button.row .n{ margin-left: auto; font-size: 10px; opacity: .7 }
       ]);
       if (s.name === active()?.name) row.setAttribute("data-on", "");
       row.onmouseenter = () => flashHighlightFor(s);
-      row.onclick = () => { cur = s.name; closeMenu(); sig = ""; render(); };
+      row.onclick = () => { cur = s.name; sessionStorage.setItem("variate.set", cur); closeMenu(); sig = ""; render(); };
       menuEl.appendChild(row);
     }
     wrap.appendChild(menuEl);
@@ -715,6 +738,7 @@ button.row .n{ margin-left: auto; font-size: 10px; opacity: .7 }
   function apply(next) {
     state = next;
     if (!cur || !setOf(cur)) cur = (state.sets[0] || {}).name || null;
+    if (cur) sessionStorage.setItem("variate.set", cur);
     // Self-heal: a client-side route change or a rogue unmount must not kill us.
     if (!container.isConnected) document.body.appendChild(container);
     render();
