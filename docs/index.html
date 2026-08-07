@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>variate</title>
+<meta name="description" content="Four design variations of one file, on the localhost you are already looking at. A skill for Claude Code, Codex CLI, opencode, and any agent that can run a shell command.">
+<meta property="og:title" content="variate">
+<meta property="og:description" content="Four design variations of one file, on the localhost you are already looking at.">
+<meta property="og:image" content="https://variate-skill.vercel.app/img/og.png">
+<meta property="og:url" content="https://variate-skill.vercel.app">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101013'/%3E%3Cpath d='M9 11l7 11 7-11' stroke='%236b64ff' stroke-width='3.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+  /* The page borrows its entire system from the product's own card: see client/card.js.
+     The dock at the bottom is a working control, and its 5px pad / 6px gap / 44px bar
+     quote the shipped card rather than the page's 4px spacing scale. */
+  @font-face{
+    font-family: "variate-inter";
+    src: url("./inter.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
+  :root{
+    --bg: #101013;
+    --fg: #f2f2f4;
+    --fg-bright: #fff;
+    --ink-inverse: #0b0b0d;
+    --dim: rgba(242,242,244,.52);
+    --ink-2: rgba(242,242,244,.74);
+    --line: rgba(255,255,255,.1);
+    --raise: rgba(255,255,255,.04);
+    --hover: rgba(255,255,255,.07);
+    --panel: rgba(16,16,19,.88);
+    --select: rgba(107,100,255,.32);
+    --shadow-deep: rgba(0,0,0,.8);
+    --shadow-soft: rgba(0,0,0,.65);
+    --accent: #6b64ff;
+    --sans: "variate-inter", -apple-system, system-ui, "Segoe UI", sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --ease: cubic-bezier(.2,.7,.2,1);
+    color-scheme: dark;
+  }
+  *{ box-sizing: border-box; margin: 0 }
+  html{ scroll-behavior: smooth; overflow-x: clip }
+  body{ overflow-x: clip }
+  a:focus-visible, button:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px }
+  button:active{ transform: translateY(1px) }
+  button:disabled{ opacity: .5; cursor: default; transform: none }
+  body{
+    background: var(--bg); color: var(--fg);
+    font: 400 15px/1.65 var(--sans);
+    letter-spacing: .01em;
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: 148px; /* room for the docked card */
+  }
+  a{ color: var(--fg); text-decoration: none; transition: color .18s var(--ease) }
+  a:hover{ color: var(--accent) }
+  ::selection{ background: var(--select) }
+  .col{ max-width: 720px; margin: 0 auto; padding: 0 24px }
+  section, footer{ border-top: 1px solid var(--line) }
+  .sr{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%) }
+  h2{ font: 600 17px/1.4 var(--sans); letter-spacing: .01em; margin-bottom: 40px; text-wrap: balance }
+
+  /* masthead */
+  .mast{ padding: 108px 0 84px }
+  .marksvg{ display: block; width: min(100%, 680px); height: auto; color: var(--fg) }
+  .marksvg .caret{ fill: var(--accent); animation: breathe 2.4s var(--ease) infinite }
+  @keyframes breathe{ 0%,100%{ opacity: 1 } 50%{ opacity: .18 } }
+  .tag{ margin-top: 44px; font-size: 17px; line-height: 1.6; max-width: 34em }
+  .tag em{ font-style: normal; color: var(--dim) }
+  .mastlinks{ margin-top: 24px; display: flex; gap: 24px; font-size: 13px; color: var(--dim) }
+  .mastlinks a{ color: var(--dim) }
+  .mastlinks a:hover{ color: var(--fg) }
+
+  /* the demo */
+  .demo{ padding: 84px 0 96px }
+  .shots{
+    position: relative; aspect-ratio: 16 / 10;
+    border-radius: 14px; overflow: hidden;
+    box-shadow: 0 0 0 1px var(--line), 0 24px 64px -32px var(--shadow-deep);
+  }
+  .shots img{
+    position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+    opacity: 0; transition: opacity .16s var(--ease);
+  }
+  .shots img[data-on]{ opacity: 1 }
+  .demo figcaption{ margin-top: 24px; font-size: 13px; color: var(--dim); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap }
+  .demo figcaption .k{ color: var(--fg) }
+
+  /* the round */
+  .round{ padding: 84px 0 96px }
+  .step{ display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 16px; padding: 24px 0 }
+  .step > div{ min-width: 0 }
+  .step + .step{ border-top: 1px solid var(--line) }
+  .step h3{ font: 500 14px/1.6 var(--sans) }
+  .step h3 i{ font-style: normal; color: var(--dim); font-variant-numeric: tabular-nums; display: block; font-weight: 400; font-size: 12px }
+  .step p{ color: var(--dim); font-size: 14px; max-width: 44em }
+  .step p .k, .why .k{ color: var(--fg) }
+  .step .cmd{ margin-top: 2px }
+  .step img{
+    display: block; width: 100%; max-width: 560px; height: auto;
+    margin-top: 16px; border-radius: 10px;
+    box-shadow: 0 0 0 1px var(--line);
+  }
+  .step img.wide{ max-width: 640px }
+
+  /* why: one decision, and the pile of machinery it removes. The strike is
+     the argument, so it is the one place the accent is spent here. */
+  .why{ padding: 84px 0 96px }
+  .decide{ font-size: clamp(21px, 2.9vw, 28px); line-height: 1.3; letter-spacing: -.015em; max-width: 24ch; text-wrap: balance }
+  .decide + .decide{ color: var(--dim); margin-top: 4px }
+  /* Even rows rather than a greedy wrap, so the last term never sits alone
+     looking like an afterthought. auto-fit with a min of min(100%, ...)
+     drops to one column before it can ever overflow a phone. */
+  .gone{
+    list-style: none; padding: 0; margin: 40px 0 44px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr));
+    gap: 16px 24px;
+  }
+  .gone li{ font-size: clamp(15px, 1.7vw, 18px); color: var(--dim) }
+  .gone li span{ position: relative; white-space: nowrap }
+  /* The strike is not decoration, it is the sentence: these things do not
+     exist. So it is drawn outright and never animated in. A scroll-driven
+     draw looked lovely and failed to the wrong state, leaving six ordinary
+     words that read as a feature list saying the opposite. */
+  .gone li span::after{
+    content: ""; position: absolute; left: -3px; right: -3px; top: 52%;
+    height: 1.5px; border-radius: 2px; background: var(--accent);
+  }
+  .then{ color: var(--dim); font-size: 14px; max-width: 46em }
+
+  /* install */
+  .install{ padding: 84px 0 96px }
+  .cmd{
+    position: relative;
+    font: 400 13px/1.7 var(--mono);
+    /* ui-monospace resolves to whatever the reader's machine calls a mono
+       font, and the popular coding faces (Fira Code, JetBrains Mono) ligate
+       a double hyphen into one long stroke. A flag has to look like the two
+       characters you actually type. */
+    font-variant-ligatures: none;
+    font-feature-settings: "liga" 0, "calt" 0;
+    color: var(--ink-2);
+    background: var(--raise);
+    border-radius: 10px; padding: 16px 52px 16px 16px;
+    box-shadow: inset 0 0 0 1px var(--line);
+    overflow-x: auto; white-space: pre;
+  }
+  .cmd + .cmd{ margin-top: 8px }
+  /* Three roles, no more: what you run, what it acts on, and the one flag
+     that makes the second block different from the first. */
+  .cmd .c{ color: var(--dim) }         /* a comment, and never copied */
+  .cmd .x{ color: var(--fg); font-weight: 500 }   /* the program */
+  .cmd .f{ color: var(--accent) }      /* a flag */
+  .copy{
+    all: unset; box-sizing: border-box; position: absolute; top: 8px; right: 8px;
+    font: 400 11px/1 var(--sans); color: var(--dim);
+    padding: 8px; border-radius: 8px; cursor: pointer;
+    background: var(--panel);
+    transition: color .18s var(--ease);
+  }
+  .copy:hover{ color: var(--fg) }
+  .copy[data-done]{ color: var(--accent) }
+  .install p{ color: var(--dim); font-size: 14px; margin-top: 24px; max-width: 46em }
+  .install p .k{ color: var(--fg) }
+
+  footer{ padding: 44px 0 24px; font-size: 12.5px; color: var(--dim) }
+  footer .col{ display: flex; gap: 8px 24px; flex-wrap: wrap }
+  footer a{ color: var(--dim) }
+  footer a:hover{ color: var(--fg) }
+
+  /* ------------------------------------------------------------------ */
+  /* the card, working: same bones as client/card.js                    */
+  .dock{
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 4px;
+    height: 44px; padding: 5px;
+    background: var(--panel);
+    -webkit-backdrop-filter: blur(16px) saturate(150%); backdrop-filter: blur(16px) saturate(150%);
+    box-shadow: 0 0 0 1px var(--line), 0 12px 32px -12px var(--shadow-soft);
+    border-radius: 14px;
+    font: 400 12px/1 var(--sans);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap; z-index: 10;
+  }
+  .dock::after{
+    content: ""; position: absolute; top: 0; left: 10%; right: 10%; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    background-size: 40% 100%; background-repeat: no-repeat;
+    background-position: -60% 0; opacity: 0;
+  }
+  .dock[data-busy]::after{ animation: sweep .5s var(--ease) }
+  @keyframes sweep{ 0%{ opacity: 1; background-position: -60% 0 } 100%{ opacity: 1; background-position: 160% 0 } }
+  .dock button{
+    all: unset; box-sizing: border-box; height: 34px; padding: 0 12px;
+    border-radius: 9px; cursor: pointer; color: var(--dim);
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: color .18s var(--ease), background .18s var(--ease);
+  }
+  .dock button:hover{ color: var(--fg); background: var(--hover) }
+  .dock .dname{
+    display: inline-flex; align-items: center;
+    height: 34px; padding: 0 12px; color: var(--dim);
+  }
+  .dock .dsep{ width: 1px; height: 18px; background: var(--line); margin: 0 2px }
+  .dock .dchip[data-on]{ background: var(--fg); color: var(--ink-inverse); font-weight: 500 }
+  .dock .dchip[data-on]:hover{ background: var(--fg); color: var(--ink-inverse) }
+  .dock .dchip i{ font-style: normal; font-weight: 400; display: none }
+  .dock .dchip[data-on] i{ display: inline }
+  .dock .dkeep{ background: var(--fg); color: var(--ink-inverse); font-weight: 500 }
+  .dock .dkeep:hover{ background: var(--fg-bright); color: var(--ink-inverse) }
+  .dock[data-kept] .dchip, .dock[data-kept] .dnav{ opacity: .4; pointer-events: none }
+  .dock[data-kept] .dkeep{ background: none; color: var(--accent); font-weight: 400; pointer-events: none }
+  .dockhint{
+    position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%);
+    font: 400 11px/1 var(--sans); color: var(--dim);
+    background: var(--panel); padding: 8px 12px; border-radius: 8px;
+    box-shadow: 0 0 0 1px var(--line); z-index: 10;
+    transition: opacity .4s var(--ease);
+  }
+  .dockhint[data-gone]{ opacity: 0 }
+
+  @media (max-width: 640px){
+    .mast{ padding: 72px 0 60px }
+    .demo, .round, .why, .install{ padding: 64px 0 72px }
+    .step{ grid-template-columns: minmax(0, 1fr); gap: 8px }
+    .dock .dname, .dock .dname + .dsep{ display: none }
+    .dock button{ padding: 0 8px }
+    body{ padding-bottom: 120px }
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation: none !important; transition: none !important }
+    html{ scroll-behavior: auto }
+  }
+</style>
+</head>
+<body>
+
+<header class="mast">
+  <div class="col">
+    <h1 class="sr">variate</h1>
+    <svg class="marksvg" viewBox="0 0 466.5 82.5" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g fill="currentColor"><rect x="0" y="24" width="10.5" height="10.5" rx="1"/><rect x="48" y="24" width="10.5" height="10.5" rx="1"/><rect x="0" y="36" width="10.5" height="10.5" rx="1"/><rect x="48" y="36" width="10.5" height="10.5" rx="1"/><rect x="0" y="48" width="10.5" height="10.5" rx="1"/><rect x="48" y="48" width="10.5" height="10.5" rx="1"/><rect x="12" y="60" width="10.5" height="10.5" rx="1"/><rect x="36" y="60" width="10.5" height="10.5" rx="1"/><rect x="24" y="72" width="10.5" height="10.5" rx="1"/><rect x="84" y="24" width="10.5" height="10.5" rx="1"/><rect x="96" y="24" width="10.5" height="10.5" rx="1"/><rect x="108" y="24" width="10.5" height="10.5" rx="1"/><rect x="120" y="36" width="10.5" height="10.5" rx="1"/><rect x="84" y="48" width="10.5" height="10.5" rx="1"/><rect x="96" y="48" width="10.5" height="10.5" rx="1"/><rect x="108" y="48" width="10.5" height="10.5" rx="1"/><rect x="120" y="48" width="10.5" height="10.5" rx="1"/><rect x="72" y="60" width="10.5" height="10.5" rx="1"/><rect x="120" y="60" width="10.5" height="10.5" rx="1"/><rect x="84" y="72" width="10.5" height="10.5" rx="1"/><rect x="96" y="72" width="10.5" height="10.5" rx="1"/><rect x="108" y="72" width="10.5" height="10.5" rx="1"/><rect x="120" y="72" width="10.5" height="10.5" rx="1"/><rect x="144" y="24" width="10.5" height="10.5" rx="1"/><rect x="168" y="24" width="10.5" height="10.5" rx="1"/><rect x="180" y="24" width="10.5" height="10.5" rx="1"/><rect x="144" y="36" width="10.5" height="10.5" rx="1"/><rect x="156" y="36" width="10.5" height="10.5" rx="1"/><rect x="192" y="36" width="10.5" height="10.5" rx="1"/><rect x="144" y="48" width="10.5" height="10.5" rx="1"/><rect x="144" y="60" width="10.5" height="10.5" rx="1"/><rect x="144" y="72" width="10.5" height="10.5" rx="1"/><rect x="216" y="0" width="10.5" height="10.5" rx="1"/><rect x="216" y="24" width="10.5" height="10.5" rx="1"/><rect x="216" y="36" width="10.5" height="10.5" rx="1"/><rect x="216" y="48" width="10.5" height="10.5" rx="1"/><rect x="216" y="60" width="10.5" height="10.5" rx="1"/><rect x="216" y="72" width="10.5" height="10.5" rx="1"/><rect x="252" y="24" width="10.5" height="10.5" rx="1"/><rect x="264" y="24" width="10.5" height="10.5" rx="1"/><rect x="276" y="24" width="10.5" height="10.5" rx="1"/><rect x="288" y="36" width="10.5" height="10.5" rx="1"/><rect x="252" y="48" width="10.5" height="10.5" rx="1"/><rect x="264" y="48" width="10.5" height="10.5" rx="1"/><rect x="276" y="48" width="10.5" height="10.5" rx="1"/><rect x="288" y="48" width="10.5" height="10.5" rx="1"/><rect x="240" y="60" width="10.5" height="10.5" rx="1"/><rect x="288" y="60" width="10.5" height="10.5" rx="1"/><rect x="252" y="72" width="10.5" height="10.5" rx="1"/><rect x="264" y="72" width="10.5" height="10.5" rx="1"/><rect x="276" y="72" width="10.5" height="10.5" rx="1"/><rect x="288" y="72" width="10.5" height="10.5" rx="1"/><rect x="324" y="12" width="10.5" height="10.5" rx="1"/><rect x="312" y="24" width="10.5" height="10.5" rx="1"/><rect x="324" y="24" width="10.5" height="10.5" rx="1"/><rect x="336" y="24" width="10.5" height="10.5" rx="1"/><rect x="348" y="24" width="10.5" height="10.5" rx="1"/><rect x="324" y="36" width="10.5" height="10.5" rx="1"/><rect x="324" y="48" width="10.5" height="10.5" rx="1"/><rect x="324" y="60" width="10.5" height="10.5" rx="1"/><rect x="336" y="72" width="10.5" height="10.5" rx="1"/><rect x="348" y="72" width="10.5" height="10.5" rx="1"/><rect x="384" y="24" width="10.5" height="10.5" rx="1"/><rect x="396" y="24" width="10.5" height="10.5" rx="1"/><rect x="408" y="24" width="10.5" height="10.5" rx="1"/><rect x="372" y="36" width="10.5" height="10.5" rx="1"/><rect x="420" y="36" width="10.5" height="10.5" rx="1"/><rect x="372" y="48" width="10.5" height="10.5" rx="1"/><rect x="384" y="48" width="10.5" height="10.5" rx="1"/><rect x="396" y="48" width="10.5" height="10.5" rx="1"/><rect x="408" y="48" width="10.5" height="10.5" rx="1"/><rect x="420" y="48" width="10.5" height="10.5" rx="1"/><rect x="372" y="60" width="10.5" height="10.5" rx="1"/><rect x="384" y="72" width="10.5" height="10.5" rx="1"/><rect x="396" y="72" width="10.5" height="10.5" rx="1"/><rect x="408" y="72" width="10.5" height="10.5" rx="1"/></g><g class="caret"><rect x="456" y="24" width="10.5" height="10.5" rx="1" class="c"/><rect x="456" y="36" width="10.5" height="10.5" rx="1" class="c"/><rect x="456" y="48" width="10.5" height="10.5" rx="1" class="c"/><rect x="456" y="60" width="10.5" height="10.5" rx="1" class="c"/><rect x="456" y="72" width="10.5" height="10.5" rx="1" class="c"/></g></svg>
+    <p class="tag">Four design variations of one file, on the localhost you are
+    already looking at. <em>Your coding agent writes them, the card flips them,
+    the one you keep is the code.</em></p>
+    <nav class="mastlinks" aria-label="primary">
+      <a href="https://github.com/Luffixos/variate">GitHub</a>
+      <a href="#install">Install</a>
+    </nav>
+  </div>
+</header>
+
+<section class="demo" aria-label="the card, on a real page">
+  <div class="col">
+    <figure>
+      <div class="shots">
+        <img src="img/state-1.webp" alt="A ceramics studio page with its original hero, the variate card docked at the bottom on position 1, named: as it was" width="1440" height="900" data-n="1">
+        <img src="img/state-2.webp" alt="The same page, hero redrawn as ruled ledger lines, the card on position 2, named: the ledger" width="1440" height="900" data-n="2" data-on>
+        <img src="img/state-3.webp" alt="The same page, hero split into two columns beside a kiln photo panel, the card on position 3, named: split" width="1440" height="900" data-n="3">
+        <img src="img/state-4.webp" alt="The same page, hero led by five pot silhouettes on a shelf, the card on position 4, named: the shelf" width="1440" height="900" data-n="4">
+      </div>
+      <figcaption>
+        <span>Flipping rewrites the real file on disk; your own dev server re-renders it.</span>
+        <span><span class="k">enter</span> keeps the one you are looking at.</span>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="round" aria-label="how a round works">
+  <div class="col">
+    <h2>The round: one question, four real answers</h2>
+
+    <div class="step">
+      <h3>ask<i>in your agent</i></h3>
+      <div>
+        <p class="cmd">/variate give me four takes on the hero</p>
+        <p style="margin-top:12px">It writes four drop-in alternatives of that one file, in your
+        stack and your design tokens, and puts its recommendation on the page.
+        In an empty folder it drafts four fresh designs instead.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <h3>flip<i>← → or 1-9</i></h3>
+      <div>
+        <p>Each position wears a name, and the menu reads the round as a
+        question: what each direction tries, and <span class="k">what it costs</span>,
+        where you actually decide.</p>
+        <img src="img/menu.webp" alt="The card's menu, open: the question, what should the hero lead with, and four named positions each listing its cost" width="1949" height="1020">
+      </div>
+    </div>
+
+    <div class="step">
+      <h3>steer<i>refine</i></h3>
+      <div>
+        <p>One line bends the round without restarting it, and it takes the
+        thought you actually have: <span class="k">2's layout with 3's
+        palette</span>. Each part arrives whole from one position, never
+        blended. What you turn down is remembered, so it does not come back
+        two rounds later as a fresh idea.</p>
+        <img src="img/refine.webp" class="wide" alt="The refine input above the card, with a typed steer: more like this, but calmer" width="1949" height="474">
+      </div>
+    </div>
+
+    <div class="step">
+      <h3>point<i>pick</i></h3>
+      <div>
+        <p>Click any section of your page to open the next round on it. The
+        page is only ever measured, never touched.</p>
+        <img src="img/pick.webp" class="wide" alt="Pick mode: a violet highlight and section tag over the features grid of the page" width="2880" height="1800">
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section class="why" aria-label="why it is built this way">
+  <div class="col">
+    <h2>Built on one decision</h2>
+    <p class="decide">The flip writes your real file.</p>
+    <p class="decide">So none of this exists:</p>
+    <ul class="gone">
+      <li><span>preview server</span></li>
+      <li><span>iframe</span></li>
+      <li><span>wrapper component</span></li>
+      <li><span>build step</span></li>
+      <li><span>hydration risk</span></li>
+      <li><span>apply step</span></li>
+    </ul>
+    <p class="then">A variant is just a .tsx, a .vue, a .css. Your file is
+    position 1, never edited. Hand edits are adopted, never lost. And
+    <span class="k">end</span> leaves the design in your diff and nothing else.</p>
+  </div>
+</section>
+
+<section class="install" id="install" aria-label="install">
+  <div class="col">
+    <h2>Two commands, every agent at once</h2>
+    <div class="cmd"><span class="c"># every agent on this machine, in one go</span>
+<span class="x">git</span> clone https://github.com/Luffixos/variate ~/code/variate
+<span class="x">node</span> ~/code/variate/scripts/install.mjs<button class="copy" type="button">copy</button></div>
+    <div class="cmd"><span class="c"># optional, Claude Code: a card click reaches your agent while it sits idle</span>
+<span class="x">node</span> ~/code/variate/scripts/install.mjs <span class="f">--hooks</span><button class="copy" type="button">copy</button></div>
+    <p>That links it into <span class="k">Claude Code</span>, <span class="k">Codex
+    CLI</span>, and <span class="k">opencode</span> in one go, and a
+    <span class="k">git pull</span> updates them all. Anything else that can run
+    a shell command works too: point it at AGENTS.md.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="col">
+    <span>variate · MIT</span>
+    <span>127.0.0.1 only · no accounts · no telemetry</span>
+    <a href="https://github.com/Luffixos/variate">github.com/Luffixos/variate</a>
+  </div>
+</footer>
+
+<div class="dockhint" id="hint">this is the card · the arrows work</div>
+<div class="dock" id="dock" role="group" aria-label="the variate card, a working demo: arrow keys flip the screenshot above">
+  <span class="dname">hero</span>
+  <span class="dsep"></span>
+  <button class="dnav" type="button" data-step="-1" aria-label="previous variant">‹</button>
+  <button class="dchip" type="button" data-n="1">1<i></i></button>
+  <button class="dchip" type="button" data-n="2">2<i></i></button>
+  <button class="dchip" type="button" data-n="3">3<i></i></button>
+  <button class="dchip" type="button" data-n="4">4<i></i></button>
+  <button class="dnav" type="button" data-step="1" aria-label="next variant">›</button>
+  <span class="dsep"></span>
+  <button class="dkeep" type="button">keep</button>
+</div>
+
+<script>
+  // The demo dock: flips the screenshot the way the real card flips your page.
+  const names = { 1: "as it was", 2: "the ledger", 3: "split", 4: "the shelf" };
+  const dock = document.getElementById("dock");
+  const hint = document.getElementById("hint");
+  const shots = [...document.querySelectorAll(".shots img")];
+  const chips = [...dock.querySelectorAll(".dchip")];
+  let at = 2, kept = false, hinted = false;
+
+  function go(n, byUser = true) {
+    if (kept || n < 1 || n > 4) return;
+    at = n;
+    shots.forEach((s) => s.toggleAttribute("data-on", +s.dataset.n === n));
+    chips.forEach((c) => {
+      const on = +c.dataset.n === n;
+      c.toggleAttribute("data-on", on);
+      c.querySelector("i").textContent = on ? "· " + names[n] : "";
+    });
+    if (!byUser) return;
+    dock.removeAttribute("data-busy");
+    void dock.offsetWidth;
+    dock.setAttribute("data-busy", "");
+    if (!hinted) { hinted = true; hint.setAttribute("data-gone", ""); }
+  }
+  function keep() {
+    if (kept) return;
+    kept = true;
+    dock.setAttribute("data-kept", "");
+    dock.querySelector(".dkeep").textContent = "kept " + at + " · " + names[at];
+    hint.setAttribute("data-gone", "");
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.getElementById("install").scrollIntoView({ behavior: still ? "auto" : "smooth" });
+  }
+  // The hint has one job, and it is done once the demo is behind you: a pill
+  // pinned over the install commands is just something in the way.
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver(([e]) => {
+      if (!e.isIntersecting) { hint.setAttribute("data-gone", ""); io.disconnect(); }
+    }, { threshold: 0 });
+    io.observe(document.querySelector(".demo"));
+  }
+
+  chips.forEach((c) => c.addEventListener("click", () => go(+c.dataset.n)));
+  dock.querySelectorAll(".dnav").forEach((b) => b.addEventListener("click", () => {
+    const d = +b.dataset.step;
+    go(((at - 1 + d + 4) % 4) + 1);
+  }));
+  dock.querySelector(".dkeep").addEventListener("click", keep);
+  addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "ArrowRight") go((at % 4) + 1);
+    else if (e.key === "ArrowLeft") go(((at + 2) % 4) + 1);
+    else if (e.key >= "1" && e.key <= "4") go(+e.key);
+    else if (e.key === "Enter") {
+      // Enter is keep only when nothing else owns it: never steal a focused
+      // link's or button's activation.
+      if (e.target !== document.body) return;
+      keep();
+    }
+  });
+  go(2, false);
+
+  // Copy buttons on the install blocks.
+  document.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", async () => {
+    const text = [...b.parentNode.childNodes]
+      .filter((n) => n.nodeType === 3 || (n.nodeType === 1 && !n.classList.contains("copy") && !n.classList.contains("c")))
+      .map((n) => n.textContent).join("").trim();
+    try { await navigator.clipboard.writeText(text); } catch {}
+    b.textContent = "copied";
+    b.setAttribute("data-done", "");
+    setTimeout(() => { b.textContent = "copy"; b.removeAttribute("data-done"); }, 1400);
+  }));
+</script>
+
+</body>
+</html>
