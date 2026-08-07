@@ -1,0 +1,3 @@
+interface:
+  display_name: "variate"
+  short_description: "Put real design variations on your localhost and pick one"

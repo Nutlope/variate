@@ -13,29 +13,38 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import {
   paths, listSets, setSummary, switchTo, readSet, atomicWrite, readSafe,
-  statMtimeSafe, defaultPortFor, nowIso,
+  readBytes, statMtimeSafe, defaultPortFor, nowIso,
 } from "./core.mjs";
 import { createRequest, queueState, TYPES } from "./queue.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.join(HERE, "..", "client");
-export const VERSION = "3.0.0";
+export const VERSION = "3.2.0";
 
 // ---------------------------------------------------------------------------
 // guards
 //
-// The threat is a web page you happen to visit fetching your localhost and
-// making variate write files. Three layers: the Host header must be loopback,
-// the Origin (which browsers always send cross-origin) must be a localhost
-// dev server, and mutating routes need the token. A hostile page cannot read
-// /v.js cross-origin, so it cannot learn the token.
+// The threat is a web page you happen to visit reaching your localhost and
+// making variate write files, kill the card, or queue an ask whose text your
+// agent will read as if you had typed it.
+//
+// The token is NOT a secret from a page that can run a script tag: /v.js is a
+// classic script that declares `const VARIATE = {...}` in the global lexical
+// scope, so any page that includes it can read the token, and the port is one
+// of 800. The token stops unaimed requests; what actually stops an aimed one
+// is that mutating a thing requires BOTH a loopback Host and an Origin that
+// is either absent (a non-browser client, which is the CLI) or a real
+// localhost dev server. A browser always sends an Origin on a POST, and an
+// opaque origin (a sandboxed iframe) sends the literal "null", which is
+// allowed to read but never to write.
 
 const LOOPBACK_HOST = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 const LOCAL_ORIGIN = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
 function originOk(req) {
   const o = req.headers.origin;
-  if (!o || o === "null") return true; // same-origin, file://, or a plain GET
+  if (!o) return true;                            // the CLI, or a plain GET
+  if (o === "null") return req.method === "GET";  // opaque origin: never mutating
   return LOCAL_ORIGIN.test(o);
 }
 
@@ -114,7 +123,7 @@ function serveStatic(root, urlPath, res, send) {
   return send(res, 200, fs.readFileSync(target), { "Content-Type": type });
 }
 
-export function startSidecar({ root, port, appUrl = null, serve = false }) {
+export function startSidecar({ root, port, serve = false }) {
   const P = paths(root);
   fs.mkdirSync(P.REQ_DONE, { recursive: true });
   fs.mkdirSync(path.dirname(P.HEARTBEAT), { recursive: true });
@@ -130,8 +139,13 @@ export function startSidecar({ root, port, appUrl = null, serve = false }) {
   const clients = new Set();
   let lastJson = "";
 
+  // The query token exists for EventSource alone, which cannot set headers.
+  // Every other caller sends the Authorization header (the card and the CLI),
+  // and a cross-origin no-cors POST cannot set one, so keeping ?t= to GET
+  // takes the whole mutating surface away from a page that stole the token.
   const authed = (req, url) =>
-    (req.headers.authorization === `Bearer ${token}`) || (url.searchParams.get("t") === token);
+    (req.headers.authorization === `Bearer ${token}`) ||
+    (req.method === "GET" && url.searchParams.get("t") === token);
 
   function computeState() {
     const sets = listSets(P).map(setSummary);
@@ -142,7 +156,6 @@ export function startSidecar({ root, port, appUrl = null, serve = false }) {
       ok: true,
       version: VERSION,
       root: P.ROOT,
-      appUrl,
       sets,
       queued: q.queued,
       working: q.working,
@@ -171,11 +184,18 @@ export function startSidecar({ root, port, appUrl = null, serve = false }) {
 
   // The card: one file, no build step. The header carries the address and the
   // token, so the card never has to discover anything.
+  //
+  // It must be the port we ACTUALLY bound, not the one we asked for. When the
+  // requested port is taken we retry upwards, and baking the requested number
+  // into the card sends it knocking on someone else's door with our token:
+  // every call 401s, no state ever arrives, and the card hides itself. The
+  // user is left looking at one design with no bar and nothing to explain it.
+  let boundPort = port ?? null;
   function cardSource() {
     const body = readSafe(path.join(CLIENT, "card.js")) ?? "/* card missing */";
     const header =
       `/* variate ${VERSION} card. Served by the sidecar; not a file in your repo. */\n` +
-      `const VARIATE = ${JSON.stringify({ port, token, version: VERSION })};\n`;
+      `const VARIATE = ${JSON.stringify({ port: boundPort, token, version: VERSION })};\n`;
     return header + body;
   }
 
@@ -213,6 +233,18 @@ export function startSidecar({ root, port, appUrl = null, serve = false }) {
           cardSeenAt = Date.now();
           return send(res, 200, cardSource(), { "Content-Type": "text/javascript; charset=utf-8", ...cors });
         }
+        if (p === "/inter.woff2") {
+          // The card's typeface. Not a secret (like /v.js), and the FontFace
+          // load may come from the user's own dev-server origin, so it needs
+          // the CORS echo. Cacheable: the card busts with ?v=<version>.
+          const woff = readBytes(path.join(CLIENT, "inter", "inter.woff2"));
+          if (!woff) return send(res, 404, "not found", cors);
+          return send(res, 200, woff, {
+            "Content-Type": "font/woff2",
+            "Cache-Control": "public, max-age=604800, immutable",
+            ...cors,
+          });
+        }
         if (p === "/state") {
           if (!authed(req, url)) return sendJson(res, 401, { error: "bad token" }, cors);
           return sendJson(res, 200, computeState(), cors);
@@ -241,7 +273,15 @@ export function startSidecar({ root, port, appUrl = null, serve = false }) {
         const body = await readBody(req);
 
         if (p === "/switch") {
-          const out = switchTo(P, String(body.set ?? ""), Number(body.to));
+          const out = switchTo(P, String(body.set ?? ""), Number(body.to), { force: !!body.force });
+          if (!out.error) {
+            // The breadcrumb lets the agent's await tell "the user is flipping
+            // right now" from "the round has gone quiet".
+            atomicWrite(P.LAST_SWITCH, JSON.stringify({
+              at: nowIso(), set: String(body.set ?? ""), to: Number(body.to),
+              source: String(body.source ?? "unknown"),
+            }) + "\n");
+          }
           broadcast(true);
           return sendJson(res, out.error ? 400 : 200, out, cors);
         }
@@ -251,6 +291,18 @@ export function startSidecar({ root, port, appUrl = null, serve = false }) {
           const out = createRequest(P, type, body.params ?? {});
           broadcast(true);
           return sendJson(res, out.error ? 400 : 200, out, cors);
+        }
+        if (p === "/shutdown") {
+          // `variate end` calls this after removing the sets, so the card
+          // hears the empty state over SSE and bows out before the server
+          // goes. A plain SIGTERM would cut the stream mid-goodbye.
+          broadcast(true);
+          // ...and then say goodbye for real, so the card closes its stream
+          // instead of retrying a port that is never coming back.
+          for (const c of clients) { try { c.write("event: bye\ndata: {}\n\n"); } catch { /* gone */ } }
+          sendJson(res, 200, { ok: true, bye: true }, cors);
+          setTimeout(() => process.exit(0), 800);
+          return;
         }
         return send(res, 404, "not found", cors);
       }
@@ -262,26 +314,38 @@ export function startSidecar({ root, port, appUrl = null, serve = false }) {
   });
 
   return new Promise((resolve, reject) => {
+    // One attempt, one pair of handlers, both removed before the next try.
+    // The callback passed to server.listen() is just a "listening" listener,
+    // so a failed attempt that leaves its own behind will still fire on the
+    // NEXT success, reporting the port we wanted instead of the one we got.
+    // That is how a project ends up with a server.json pointing somewhere the
+    // server is not. The socket itself is the only trustworthy source.
     const listen = (want, left) => {
-      server.once("error", (e) => {
+      const onError = (e) => {
+        server.removeListener("listening", onListening);
         if (e.code === "EADDRINUSE" && left > 0) listen(want + 1, left - 1);
         else reject(e);
-      });
-      server.listen(want, "127.0.0.1", () => {
-        atomicWrite(P.SERVER_JSON, JSON.stringify({ pid: process.pid, port: want, root: P.ROOT, startedAt: started, version: VERSION, serve }, null, 2) + "\n");
+      };
+      const onListening = () => {
+        server.removeListener("error", onError);
+        boundPort = server.address().port;
+        atomicWrite(P.SERVER_JSON, JSON.stringify({ pid: process.pid, port: boundPort, root: P.ROOT, startedAt: started, version: VERSION, serve }, null, 2) + "\n");
         resolve({
-          port: want, token, server,
+          port: boundPort, token, server,
           state: computeState,
           cardSeenAt: () => cardSeenAt,
           close: () => { clearInterval(tick); clearInterval(ping); server.close(); },
         });
-      });
+      };
+      server.once("error", onError);
+      server.once("listening", onListening);
+      server.listen(want, "127.0.0.1");
     };
     listen(port ?? defaultPortFor(P.ROOT), 9);
   });
 }
 
-// Run directly: node src/sidecar.mjs --root . [--port N] [--app-url ...]
+// Run directly: node src/sidecar.mjs --root . [--port N] [--serve]
 if (import.meta.url === `file://${process.argv[1]}`) {
   const a = {};
   const argv = process.argv.slice(2);
@@ -293,7 +357,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const out = await startSidecar({
     root: a.root && a.root !== true ? a.root : ".",
     port: a.port && a.port !== true ? Number(a.port) : undefined,
-    appUrl: a["app-url"] && a["app-url"] !== true ? String(a["app-url"]) : null,
     serve: !!a.serve,
   });
   console.log(`variate sidecar on http://127.0.0.1:${out.port}`);

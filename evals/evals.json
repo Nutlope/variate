@@ -1,0 +1,45 @@
+{
+  "skill_name": "variate",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "This folder is empty. Design a landing page for my invoicing tool and give me a few directions to pick from.",
+      "expected_output": "up serves a scaffolded page, add --new registers four fresh positions, plan.json then 1-4 are written, one is put live, and the agent runs the await listening loop before handing off",
+      "expectations": [
+        "The agent ran variate up and then variate add index.html --new --n 4",
+        "plan.json was written before the variant files",
+        "Four structurally different designs exist as .variate/index/1.html through 4.html",
+        "The agent ran variate use to put its recommendation live before presenting",
+        "After presenting, the agent ran variate await with a short --timeout at least once instead of ending its turn",
+        "The handoff names each position's direction, and explains the arrow keys and enter to keep"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Give me four takes on the hero section.",
+      "files": ["evals/files/vite-app"],
+      "expected_output": "a round on the existing Hero component using the project's own tokens and components, presented in positions, followed by the listening loop",
+      "expectations": [
+        "The agent identified the hero file by searching for visible copy, not by guessing filenames",
+        "Variant 1 is byte-identical to the original file",
+        "Every variant keeps the same exports and imports only existing dependencies",
+        "variate check was run and its warnings addressed before presenting",
+        "The agent spoke in positions (2 of 4), never filenames",
+        "The agent ran the variate await loop after the handoff"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I clicked keep on the card.",
+      "files": ["evals/files/mid-session"],
+      "expected_output": "the queued done ask is claimed, the set is ended keeping the live file, and the reply names the kept direction",
+      "expectations": [
+        "The agent drained or awaited the queue and claimed the done ask",
+        "The agent ran variate end, and the live file kept the winning variant's content",
+        "No pkill or manual process-cleanup advice was given; the agent trusted variate end to remove .variate and stop any sidecar",
+        "The ask was acked with --ack and a one line --note",
+        "The reply names the kept direction by its plan.json name, not a filename"
+      ]
+    }
+  ]
+}

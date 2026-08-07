@@ -1,7 +1,7 @@
 # The craft
 
-Read this before your first generative work in a session. These rules
-descend from a battle-tested prompt library; treat them as hard.
+Read this before your first generative work in a session. Treat these rules
+as hard.
 
 ## What makes a round
 
@@ -25,20 +25,43 @@ Before you present, compare your own variants. If two came out alike, redraw
 one against an explicit constraint: "no card grid", "no split layout", "type
 only", "the composition is the background".
 
-Give each position a direction **before** you draft it, and write those
-directions into `plan.json`. Naming the four corners of the idea space up front
-is what stops them collapsing toward the same safe answer:
+## Writing plan.json
+
+Write it **before** you draft. Naming the corners of the idea space up front
+is what stops four positions collapsing toward the same safe answer:
 
 ```json
-["as it was", "the ledger, type only", "split, asymmetric axis", "the outcome first"]
+{
+  "question": "How much should the hero say before you scroll?",
+  "positions": [
+    { "name": "as it was" },
+    { "name": "the ledger", "angle": "type only", "cost": "nothing to look at above the fold" },
+    { "name": "split", "angle": "asymmetric two column", "cost": "weaker at 390px" },
+    { "name": "the outcome", "angle": "leads with the result, not the product", "cost": "slower to say what it is" }
+  ]
+}
 ```
+
+- **question**: what this round is asking. One line. Everything else is an
+  answer to it, and a round without one is four files nobody can judge.
+- **name**: what you would call this direction in conversation. It rides the
+  card, so "the ledger" beats "Option B".
+- **angle**: the one thing this position changes. Two positions with the same
+  angle are one idea wearing two names, and `variate check` says so.
+- **cost**: what it gives up. Every real direction gives something up, and
+  the user reads this on the card while deciding, so an honest sentence here
+  is worth more than a paragraph in chat.
+
+Position 1 of a round on an existing file is their file as it was; it needs
+neither an angle nor a cost.
 
 ## Presenting
 
 Name what each position is trying, in the user's language, not yours: "1 is
 what you had, 2 is a split manifesto, 3 leads with the product shot, 4 puts the
-work list first". Then say which you would keep **and why**, in one sentence.
-Facts you can look up yourself; the decision is theirs.
+work list first". Then say which you would keep **and why**, in one sentence,
+and name what it costs. A recommendation with no cost attached reads like
+salesmanship; the decision is still theirs.
 
 Positions, never filenames. The number on the card is the number in the
 sentence.
@@ -48,8 +71,15 @@ sentence.
 - A plain pick: they are already on it. Nothing to do but log it.
 - **Compositional feedback is the best kind**: "2's layout with 4's stat strip"
   IS the design. Draw the merge as the next position rather than asking them to
-  choose again.
+  choose again. Each part comes from exactly one donor, whole, lifted from its
+  real file (`.dropped/` keeps the narrowed-away ones): never blend two
+  directions, because the average is the middle neither of them wanted. Name
+  the donors in the merge's `angle`.
 - "Like 3 but calmer" is a steer, below.
+- **A passed-over direction stays dead.** The board remembers what each round
+  turned down (`variate status` lists it); offering it again two rounds later
+  as a fresh idea reads as not listening. It comes back only when the user
+  asks for it, and then it is a copy from `.dropped/`, not a redraw.
 - Silence on a round means it was not a real question. Ask a sharper one.
 
 ## The steers
@@ -73,11 +103,44 @@ Always, in every variant:
 - **Whitespace is the luxury.** When a section feels flat, add space, never
   another element.
 - **No em dashes or en dashes in copy.** Use commas, colons, or parentheses.
-- **Responsive from 360px to 1440px**, honest contrast, and honor
+- **Responsive from 360px to 1440px**, honest contrast, and honour
   `prefers-reduced-motion`.
-- **Ground every word in the real product.** Never invent metrics, customers,
-  testimonials, or logos. If you need copy you do not have, ask for one line
-  rather than inventing three.
+- **Ground every word in the real product.** In their project, lift their
+  copy. Designing from nothing, write specific plausible content: a real
+  sentence about a real thing, never lorem ipsum and never a dead button.
+  What you must never fake is proof: logo walls, testimonials, customer
+  counts, revenue. Layout gets rewritten later; an invented number ships.
+
+## Motion
+
+Movement is a cost the user pays every time they meet it, so the first
+question is never how to animate something, it is whether to.
+
+- **Many times a day** (a menu, a toggle, anything a key triggers): no
+  animation. Speed IS the feature, and motion here reads as lag.
+- **Now and then** (a dialog, a drawer, a toast): a short one, earned.
+- **Rarely** (first run, a success moment): room for delight.
+
+When something does move:
+
+- **Ease out on the way in.** Start fast and settle. Motion that starts slow
+  delays the exact moment the user is waiting for.
+- **Under a third of a second** for anything in the interface. If it feels
+  too quick, it is probably right.
+- **Move `transform` and `opacity`, nothing else.** Anything that changes
+  layout will stutter.
+- **Never grow from nothing.** Come in at around 95% and fade; things in the
+  world do not appear out of zero size.
+- **Grow from whatever opened it.** A menu or popover expands from its
+  trigger, not from its own middle. A centred dialog is the exception.
+- **`prefers-reduced-motion` turns it off**, not down.
+
+The house curve, the one this tool's own card uses, is
+`cubic-bezier(.2,.7,.2,1)`. Reach for it before inventing one.
+
+When a round is *about* motion, say so in the position's `angle`, and give
+the user something they can trigger more than once: on the card, clicking the
+position they are already on replays it.
 
 ## Speaking the project's language
 
@@ -93,12 +156,21 @@ that looks like AI output. Before drafting, read:
    your variant sits between them without a seam.
 4. **Their copy.** Lift it. A variant is a design alternative, not a rewrite,
    unless the user asked for new words.
+5. **How the product carries itself.** A calm daily tool and a loud consumer
+   launch tolerate very different boldness. This is the ceiling on how far
+   your most adventurous position may go: bold is relative to the room.
+6. **How often this thing is used.** Something someone hits fifty times a day
+   wants less of everything, motion most of all.
 
 ## The variant contract
 
 Every variant file is a complete, drop-in replacement for the target:
 
 - the same exports, the same props, the same shape the rest of the app imports
+- in markup, the root element carries `data-variate-section="<set>"`, the
+  card's handle for watching and pointing at the piece. Variant 1 never
+  carries it, style files have no root to tag, and `end` strips it from the
+  kept file, so it never ships.
 - the same client/server nature (if the original is a client component, yours
   is too)
 - only dependencies already in the project
@@ -126,6 +198,12 @@ If the user has no project, or the section does not exist, build it first, in
 their stack, the way they would have written it. Then `variate add` that file
 and run a round on it. Do not build inside `.variate/`: it is scratch space for
 alternatives, not a place to author from.
+
+With no design system to inherit, **settle a baseline before you diverge**:
+one background, one ink, one accent, a system font stack, one spacing rhythm.
+Fix that first, then let the positions differ on structure. Four positions
+that each invent their own palette are not a round about layout, they are
+four unrelated pages, and the user cannot tell you what they liked.
 
 ## Assets
 

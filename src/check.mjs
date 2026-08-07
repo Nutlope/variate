@@ -33,6 +33,35 @@ const importsOf = (src) => {
 const bare = (spec) => !spec.startsWith(".") && !spec.startsWith("/") && !spec.startsWith("@/") && !spec.startsWith("~");
 const pkgName = (spec) => (spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0]);
 
+/**
+ * The round itself, checked before the variants.
+ *
+ * A round is a question with answers that pull in different directions. This
+ * is where that is enforced, so the instructions do not have to keep saying
+ * it: four names hanging off one idea shows up here as a warning instead of
+ * as a wasted round the user has to sit through.
+ */
+export function checkPlan(set) {
+  const out = [];
+  const landed = new Set(set.variants.map((v) => v.n));
+  if (!landed.size) return out;
+
+  if (!set.question) {
+    out.push('no question in plan.json: say what this round is asking, or the positions are answers to nothing');
+  }
+
+  const seen = new Map();
+  for (const n of landed) {
+    const p = set.plan[n - 1] ?? {};
+    if (!p.name) out.push(`position ${n} has no name in plan.json, so the card shows a bare number`);
+    const angle = (p.angle ?? "").trim().toLowerCase();
+    if (!angle) continue;
+    if (seen.has(angle)) out.push(`positions ${seen.get(angle)} and ${n} both change "${p.angle}": that is one idea, not two`);
+    else seen.set(angle, n);
+  }
+  return out;
+}
+
 export function checkVariant(P, set, variant, baselineSrc, deps) {
   const src = readSafe(variant.file);
   const w = [];
@@ -49,6 +78,15 @@ export function checkVariant(P, set, variant, baselineSrc, deps) {
     const baseClient = /^\s*["']use client["']/m.test(baselineSrc);
     const thisClient = /^\s*["']use client["']/m.test(src);
     if (baseClient !== thisClient) w.push(baseClient ? 'missing the "use client" directive variant 1 has' : 'adds "use client" where variant 1 has none');
+  }
+
+  // The root marker lets the card watch this piece precisely, flash it on
+  // set switches, and say when it is not on the current screen. Variant 1 is
+  // the user's file and is never expected to carry it; theme and style files
+  // have no root to tag.
+  const markupish = /\.(html|tsx|jsx|vue|svelte|astro)$/i.test(set.ext);
+  if (markupish && variant.n !== 1 && !src.includes("data-variate-section=")) {
+    w.push(`has no data-variate-section="${set.name}" on its root element, so the card cannot watch or point at it`);
   }
 
   if (isCode) {
@@ -140,7 +178,11 @@ function parseWith(parser, file, ext) {
 }
 
 export function checkSet(P, set) {
-  const baselineSrc = set.variants[0] ? readSafe(set.variants[0].file) : null;
+  // Position 1 by number, never "whichever landed first". In a set where 1
+  // has not been written yet, taking variants[0] would silently make the
+  // first real draft the baseline AND skip linting it entirely.
+  const one = set.variants.find((v) => v.n === 1);
+  const baselineSrc = one ? readSafe(one.file) : null;
   let deps = null;
   const pkg = readSafe(path.join(P.ROOT, "package.json"));
   if (pkg) {
@@ -150,7 +192,7 @@ export function checkSet(P, set) {
     } catch { /* no dep check */ }
   }
   const parser = parserFor(P);
-  return set.variants.slice(1).map((v) => {
+  return set.variants.filter((v) => v.n !== 1).map((v) => {
     const row = checkVariant(P, set, v, baselineSrc, deps);
     if (parser) {
       const err = parseWith(parser, v.file, set.ext);

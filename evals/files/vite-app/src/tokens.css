@@ -1,0 +1,8 @@
+:root {
+  --paper: #faf8f4;
+  --ink: #17150f;
+  --ink-muted: #6f6a5e;
+  --accent: #2f6b4f;
+  --radius: 10px;
+}
+body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.6 system-ui, sans-serif; }

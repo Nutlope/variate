@@ -44,7 +44,10 @@ export function labelFor(type, params = {}) {
     if (params.from) bits.push(`from ${params.from}`);
     return bits.join(", ");
   }
-  if (type === "done") return "finish up";
+  if (type === "done") {
+    if (!params.set) return "finish up";
+    return `keep ${params.n ?? "the live one"} of ${params.set}`;
+  }
   return type;
 }
 
@@ -74,7 +77,9 @@ export function queueState(P) {
     if (!f.endsWith(".json") && !f.endsWith(".json.working")) continue;
     const j = readJsonSafe(path.join(P.REQ, f));
     if (!j) continue;
-    (f.endsWith(".working") ? working : queued).push({ id: j.id, type: j.type, label: j.label });
+    // The set (when the ask names one) lets the card scope its pending state
+    // to the round the user is actually looking at.
+    (f.endsWith(".working") ? working : queued).push({ id: j.id, type: j.type, label: j.label, set: j.params?.set ?? null });
   }
   return { queued, working };
 }

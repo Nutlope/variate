@@ -50,8 +50,8 @@ node "$V" status --root "$WS" --json | J 'j.sets[0].n' | grep -qx 1
 node "$V" status --root "$WS" --json | J 'j.sets[0].at' | grep -qx 1
 
 echo "-- variants land as plain files and become positions"
-printf '<html><body><h1>two</h1></body></html>\n' > "$WS/.variate/page/2.html"
-printf '<html><body><h1>three</h1></body></html>\n' > "$WS/.variate/page/3.html"
+printf '<html><body data-variate-section="page"><h1>two</h1></body></html>\n' > "$WS/.variate/page/2.html"
+printf '<html><body data-variate-section="page"><h1>three</h1></body></html>\n' > "$WS/.variate/page/3.html"
 node "$V" status --root "$WS" --json | J 'j.sets[0].n' | grep -qx 3
 
 echo "-- use switches the real file, and switching back restores it exactly"
@@ -94,16 +94,70 @@ printf 'import { Button } from "./Button";\nexport function Hero(){ return Butto
 node "$V" add "$CODE/src/components/Hero.jsx" --root "$CODE" > /dev/null
 # a sibling import that is correct once copied over the target must NOT warn,
 # even though the variant file itself sits in .variate/
-printf 'import { Button } from "./Button";\nexport function Hero(){ return Button }\n' > "$CODE/.variate/hero/2.jsx"
+printf 'import { Button } from "./Button";\nexport function Hero(){ return <div data-variate-section="hero"><Button/></div> }\n' > "$CODE/.variate/hero/2.jsx"
+cat > "$CODE/.variate/hero/plan.json" <<'JSON'
+{"question":"Does the hero need the product shot?",
+ "positions":[{"name":"as it was"},{"name":"type only","angle":"drops the image","cost":"less to look at"}]}
+JSON
 node "$V" check hero --root "$CODE" | grep -q "no warnings"
 node "$V" check hero --root "$CODE" | grep -q "NOT parsed"
 # ...and one that would genuinely fail to build must warn
 printf 'import { Nope } from "./Nope";\nimport c from "party-parrot";\nexport function Hero(){ return [Nope, c] }\n' > "$CODE/.variate/hero/3.jsx"
 node "$V" check hero --root "$CODE" | grep -q 'does not resolve'
 node "$V" check hero --root "$CODE" | grep -q 'not in package.json'
+# a markup variant without the root marker is warned about (variant 1 never
+# is: the quiet check above had an unmarked variant 1 and a marked 2)
+node "$V" check hero --root "$CODE" | grep -q 'data-variate-section'
 # a variant that drops the export the app imports must warn
 printf 'export function Other(){ return null }\n' > "$CODE/.variate/hero/4.jsx"
 node "$V" check hero --root "$CODE" | grep -q 'does not export Hero'
+
+echo "-- only positions that actually landed can be remembered as turned down"
+IMP=$(mktemp -d)/imp
+mkdir -p "$IMP"; printf '<h1>one</h1>\n' > "$IMP/index.html"
+node "$V" add "$IMP/index.html" --name page --root "$IMP" --n 4 > /dev/null
+cat > "$IMP/.variate/page/plan.json" <<'JSON'
+{"question":"How loud?","positions":[{"name":"as it was"},{"name":"the ledger"},{"name":"soft"},{"name":"weird"}]}
+JSON
+# the user decides on 2 before 3 and 4 are ever written: normal, the pager grows
+printf '<h1>two</h1>\n' > "$IMP/.variate/page/2.html"
+node "$V" use page 2 --root "$IMP" > /dev/null
+node "$V" end page --root "$IMP" > /dev/null
+node "$V" status --root "$IMP" --json | J 'j.passed.length' | grep -qx 0
+node "$V" status --root "$IMP" | grep -q 'soft' && exit 1
+
+echo "-- a hand edit is adopted into a FREE position, never over one that exists"
+GAP=$(mktemp -d)/gap
+mkdir -p "$GAP"; printf '<h1>one</h1>\n' > "$GAP/index.html"
+node "$V" add "$GAP/index.html" --name page --root "$GAP" --n 3 > /dev/null
+# position 3 lands before 2, which the pager explicitly supports
+printf '<h1>AGENT THREE</h1>\n' > "$GAP/.variate/page/3.html"
+printf '<h1>MY OWN EDIT</h1>\n' > "$GAP/index.html"
+node "$V" use page 3 --root "$GAP" | grep -q "kept as 4"
+grep -q 'AGENT THREE' "$GAP/.variate/page/3.html"    # the agent's work survived
+grep -q 'MY OWN EDIT' "$GAP/.variate/page/4.html"    # and so did the user's
+grep -q 'AGENT THREE' "$GAP/index.html"              # they got what they asked for
+
+echo "-- check lints every position even before position 1 has landed"
+NEW=$(mktemp -d)/new
+mkdir -p "$NEW"
+node "$V" add "$NEW/page.html" --name page --root "$NEW" --new --n 3 > /dev/null
+# the dash is written as UTF-8 octal so this repo holds no literal em dash
+printf '<h1>a \342\200\224 b</h1>\n' > "$NEW/.variate/page/2.html"
+node "$V" check page --root "$NEW" | grep -q "em or en dash"
+
+echo "-- the marker is stripped as an attribute, never as a selector a variant styles with"
+MK=$(mktemp -d)/mk
+mkdir -p "$MK"; printf '<h1>one</h1>\n' > "$MK/index.html"
+node "$V" add "$MK/index.html" --name page --root "$MK" > /dev/null
+cat > "$MK/.variate/page/2.html" <<'HTML'
+<style>[data-variate-section="page"]{padding:4rem}</style>
+<section data-variate-section="page"><h1>two</h1></section>
+HTML
+node "$V" use page 2 --root "$MK" > /dev/null
+node "$V" end --root "$MK" > /dev/null
+grep -q '\[data-variate-section="page"\]{padding:4rem}' "$MK/index.html"   # the style survived
+grep -q '<section><h1>two</h1></section>' "$MK/index.html"                 # the attribute went
 
 echo "-- an empty project is never a dead end: up scaffolds a page and serves it"
 EMPTY=$(mktemp -d)/empty
@@ -171,14 +225,147 @@ printf 'export function Orphan(){ return null }\n' > "$CODE/src/components/Orpha
 node "$V" add "$CODE/src/components/Orphan.jsx" --root "$CODE" | grep -q "nothing in this project seems to import"
 node "$V" add "$CODE/src/components/Button.jsx" --root "$CODE" | grep -qv "nothing in this project seems to import"
 
-echo "-- end keeps what is live and removes every trace"
+echo "-- a round is a question with costed answers, and check lints the round"
+RND=$(mktemp -d)/rnd
+mkdir -p "$RND"; cp fixtures/static/index.html "$RND/"
+node "$V" add "$RND/index.html" --name page --root "$RND" > /dev/null
+printf '<h1 data-variate-section="page">two</h1>\n' > "$RND/.variate/page/2.html"
+printf '<h1 data-variate-section="page">three</h1>\n' > "$RND/.variate/page/3.html"
+# the lazy round: no question, one nameless position, two positions on one idea
+printf '{"positions":[{"name":"as it was"},{"name":"bolder","angle":"layout"},{"angle":"Layout"}]}\n' > "$RND/.variate/page/plan.json"
+node "$V" check page --root "$RND" | grep -q "no question"
+node "$V" check page --root "$RND" | grep -q "position 3 has no name"
+node "$V" check page --root "$RND" | grep -q "both change"
+# the real one is quiet
+cat > "$RND/.variate/page/plan.json" <<'JSON'
+{"question":"How much should the hero say?",
+ "positions":[{"name":"as it was"},
+              {"name":"the ledger","angle":"type only","cost":"nothing above the fold"},
+              {"name":"split","angle":"asymmetric","cost":"weaker at 390px"}]}
+JSON
+node "$V" check page --root "$RND" | grep -q "no warnings"
+# a plain array is still a plan, just one where a position is only a name
+printf '["as it was","two","three"]\n' > "$RND/.variate/page/plan.json"
+node "$V" check page --root "$RND" | grep -q "position 2 has no name" && exit 1
+node "$V" status --root "$RND" --json | J 'j.sets[0].n' | grep -qx 3
+
+echo "-- narrowing keeps the question and what the surviving position was trying"
+cat > "$RND/.variate/page/plan.json" <<'JSON'
+{"question":"How much should the hero say?",
+ "positions":[{"name":"as it was"},
+              {"name":"the ledger","angle":"type only","cost":"nothing above the fold"}]}
+JSON
+node "$V" use page 2 --root "$RND" > /dev/null
+node "$V" narrow page --root "$RND" > /dev/null
+J 'j.question' < "$RND/.variate/page/plan.json" | grep -q "How much"
+J 'j.positions[0].cost' < "$RND/.variate/page/plan.json" | grep -q "above the fold"
+
+echo "-- a settled piece is remembered, and the session recaps it at the end"
+node "$V" end page --why "it reads in one breath" --root "$RND" | grep -q "the ledger"
+J 'j.settled[0].kept' < "$RND/.variate/board.json" | grep -q "the ledger"
+J 'j.settled[0].why' < "$RND/.variate/board.json" | grep -q "one breath"
+node "$V" status --root "$RND" | grep -q "settled"
+node "$V" end --root "$RND" | grep -q "SETTLED"
+test ! -d "$RND/.variate"
+
+echo "-- when the wanted port is taken, the card is told where the server ACTUALLY is"
+BUSY=$((PORT + 40))
+node -e "require('http').createServer((_,r)=>r.end('busy')).listen($BUSY,'127.0.0.1')" & BLOCKER=$!
+sleep 1
+COLL=$(mktemp -d)/coll
+mkdir -p "$COLL"; cp fixtures/static/index.html "$COLL/"
+node "$V" up --root "$COLL" --port $BUSY > /dev/null
+REAL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$COLL/.variate/server.json','utf8')).port)")
+test "$REAL" != "$BUSY"                                    # it moved off the taken port
+curl -s "http://127.0.0.1:$REAL/health" | J 'j.root' | grep -qx "$COLL"
+# the card must point at the port it is served from, or every call 401s
+# against a stranger and the bar silently disappears
+curl -s "http://127.0.0.1:$REAL/v.js" | grep -q "\"port\":$REAL"
+kill $BLOCKER 2>/dev/null || true
+pkill -f "sidecar.mjs --root $COLL" 2>/dev/null || true
+
+echo "-- narrowing keeps the one they chose and drops the rest out of the pager"
+NAR=$(mktemp -d)/nar
+mkdir -p "$NAR"; cp fixtures/static/index.html "$NAR/"
+node "$V" add "$NAR/index.html" --name page --root "$NAR" > /dev/null
+printf '["as it was","the ledger","split, asymmetric","outcome first"]\n' > "$NAR/.variate/page/plan.json"
+for i in 2 3 4; do printf '<h1>take %s</h1>\n' "$i" > "$NAR/.variate/page/$i.html"; done
+node "$V" use page 3 --root "$NAR" > /dev/null
+# with no position given it narrows to whatever is live: deciding, not counting
+node "$V" narrow page --root "$NAR" | grep -q "split, asymmetric"
+node "$V" status --root "$NAR" --json | J 'j.sets[0].n' | grep -qx 1
+node "$V" status --root "$NAR" --json | J 'j.sets[0].at' | grep -qx 1
+grep -q '<h1>take 3</h1>' "$NAR/index.html"          # the choice stayed live
+test "$(cat "$NAR/.variate/page/plan.json")" != ""
+# ...and nothing anyone made was destroyed
+test -f "$NAR/.variate/page/.dropped/1-as-it-was.html"
+test -f "$NAR/.variate/page/.dropped/4-outcome-first.html"
+node "$V" status --root "$NAR" | grep -q "dropped:"
+# the board remembers what was turned down (the user's own baseline is not a
+# rejection), so a later round can refuse to redraw a dead direction
+node "$V" status --root "$NAR" --json | J 'j.passed.length' | grep -qx 2
+node "$V" status --root "$NAR" | grep -q 'passed.*outcome first'
+node "$V" status --root "$NAR" | grep -q 'as it was' && exit 1
+# a board is not "nothing to do", whichever way you ask for it
+node "$V" status --root "$NAR" --json > /dev/null
+node "$V" status --root "$NAR" > /dev/null
+# a second round dropping the same position number and name must not
+# overwrite what the first round put in the attic
+printf '<h1>round two</h1>\n' > "$NAR/.variate/page/2.html"
+printf '["where you landed","outcome first"]\n' > "$NAR/.variate/page/plan.json"
+node "$V" narrow page 1 --root "$NAR" > /dev/null
+test "$(ls "$NAR/.variate/page/.dropped" | wc -l | tr -d ' ')" = 4
+grep -q 'outcome first' "$NAR/.variate/page/.dropped/4-outcome-first.html" && exit 1
+# narrowing again when there is only one position is a no-op, not an error
+set +e; node "$V" narrow page 1 --root "$NAR" > /dev/null; RC=$?; set -e
+test $RC = 2
+# and end still takes the whole set, attic included
+node "$V" end page --root "$NAR" > /dev/null
+test ! -d "$NAR/.variate/page"
+grep -q '<h1>take 3</h1>' "$NAR/index.html"
+
+echo "-- await with no card and nothing queued says: ask in chat"
+NOC=$(mktemp -d)/noc
+mkdir -p "$NOC"
+set +e; node "$V" await --root "$NOC" > /dev/null 2>&1; RC=$?; set -e
+test $RC = 3
+
+echo "-- routine polling never looks like a failure: drain on an empty queue exits 0"
+mkdir -p "$NOC/.variate/requests/done"
+node "$V" drain --root "$NOC" | grep -qx '\[\]'
+
+echo "-- await delivers an already-queued ask immediately, card or not"
+mkdir -p "$NOC/.variate/requests/done"
+printf '{"v":3,"id":"0001","type":"done","label":"keep 2 of page","params":{"set":"page","n":2}}\n' > "$NOC/.variate/requests/0001-done.json"
+node "$V" await --root "$NOC" | J 'j.type' | grep -qx done
+test -f "$NOC/.variate/requests/0001-done.json.working"
+
+echo "-- the wake watcher stands down under a live lock, and leaves none behind"
+mkdir -p "$NOC/.variate/state"
+printf '{"pid":%s,"startedAt":%s,"timeoutMs":900000}' $$ "$(node -e 'console.log(Date.now())')" > "$NOC/.variate/state/wake.lock"
+echo '{}' | node scripts/await.mjs --ws "$NOC/.variate" --wake --timeout 5
+test -f "$NOC/.variate/state/wake.lock"        # the live holder's lock is untouched
+rm "$NOC/.variate/state/wake.lock"
+
+echo "-- and it never resurrects a workspace that end removed"
+GONE=$(mktemp -d)/gone
+mkdir -p "$GONE"
+echo '{}' | node scripts/await.mjs --ws "$GONE/.variate" --wake --timeout 5
+test ! -d "$GONE/.variate"
+
+echo "-- end keeps what is live and removes every trace, sidecar included"
 node "$V" use page 1 --root "$WS" > /dev/null
 node "$V" use page 2 --root "$WS" > /dev/null
+SPID=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$WS/.variate/server.json','utf8')).pid)")
 node "$V" end --root "$WS" > /dev/null
+for i in 1 2 3 4 5; do kill -0 "$SPID" 2>/dev/null || break; sleep 0.3; done
+! kill -0 "$SPID" 2>/dev/null
 test ! -d "$WS/.variate"
 test "$(grep -c 'variate:begin' "$WS/index.html")" = "0"
 ! grep -qx '.variate/' "$WS/.gitignore"
 grep -q '<h1>two</h1>' "$WS/index.html"
+# the working marker leaves with the session; only the design stays
+! grep -q 'data-variate-section' "$WS/index.html"
 # The only thing left in the diff is the design decision itself.
 test "$(cd "$WS" && git status --porcelain)" = " M index.html"
 
@@ -188,10 +375,11 @@ mkdir -p "$MULTI"
 printf '<h1>a</h1>\n' > "$MULTI/a.html"; printf '<h1>b</h1>\n' > "$MULTI/b.html"
 node "$V" add "$MULTI/a.html" --root "$MULTI" > /dev/null
 node "$V" add "$MULTI/b.html" --root "$MULTI" > /dev/null
-printf '<h1>a2</h1>\n' > "$MULTI/.variate/a/2.html"
+printf '<h1 data-variate-section="a">a2</h1>\n' > "$MULTI/.variate/a/2.html"
 node "$V" use a 2 --root "$MULTI" > /dev/null
 node "$V" end a --root "$MULTI" | grep -q "variant is gone"
 grep -q '<h1>a2</h1>' "$MULTI/a.html"          # the winner stayed
+! grep -q 'data-variate-section' "$MULTI/a.html"   # ...without the marker
 test ! -d "$MULTI/.variate/a"
 test -d "$MULTI/.variate/b"                     # the other round is untouched
 node "$V" status --root "$MULTI" --json | J 'j.sets.length' | grep -qx 1

@@ -1,0 +1,8 @@
+{
+  "name": "ledgerly",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "vite" },
+  "dependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" },
+  "devDependencies": { "vite": "^6.0.0", "@vitejs/plugin-react": "^4.3.0" }
+}

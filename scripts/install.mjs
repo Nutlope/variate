@@ -1,11 +1,26 @@
 #!/usr/bin/env node
 // Install variate as a skill for whichever agents are on this machine.
 //
-//   node scripts/install.mjs [--dry-run] [--remove] [--claude] [--codex] [--opencode]
+//   node scripts/install.mjs [--dry-run] [--remove] [--copy] [--claude] [--codex] [--opencode]
+//   node scripts/install.mjs --hooks [--dry-run] [--remove]
 //
 // With no target flags it installs everywhere it finds a home. A symlink is
 // used so `git pull` in this repo updates every agent at once; on a system
 // where symlinks are awkward, pass --copy.
+//
+// --hooks is separate and opt-in, because it edits the user's own Claude Code
+// settings. It adds two Stop hooks so a card click reaches the agent while it
+// is idle.
+//
+// There are two layers here and they cover different windows. SKILL.md's
+// frontmatter declares the same pair, and those do fire: invoking the skill
+// and ending the turn arms the watcher for its full fifteen minutes. What
+// they cannot cover is a turn where the skill was never invoked, or a user
+// who wanders back long after the watcher expired. These, in settings.json,
+// are registered for the whole session either way. Neither layer makes the
+// other redundant, and running both is not double-handling: await.mjs claims
+// from a queue, so whichever fires first drains it and the other finds
+// nothing to do.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -19,9 +34,8 @@ const HOME = os.homedir();
 const args = {};
 for (const a of process.argv.slice(2)) if (a.startsWith("--")) args[a.slice(2)] = true;
 
-// Where each agent looks. Claude Code and Codex read the same open skill
-// format; opencode discovers either of those two, so it is only listed for
-// the report and never written to twice.
+// Where each agent looks. All three read the same open skill format; each
+// gets its own link, so removing one agent's install never breaks another.
 const TARGETS = [
   { key: "claude", label: "Claude Code", dir: path.join(HOME, ".claude", "skills", "variate") },
   { key: "codex", label: "Codex CLI", dir: path.join(HOME, ".agents", "skills", "variate") },
@@ -33,6 +47,84 @@ const chosen = wanted.length ? wanted : TARGETS;
 const dry = !!args["dry-run"];
 
 const say = (k, v) => console.log(k.padEnd(13) + v);
+
+// ---------------------------------------------------------------------------
+// --hooks: idle wake, in the one place it stays registered
+//
+// Both hooks are silent no-ops in any project that has no .variate/, so they
+// cost a process spawn per turn and nothing else. The sync one hands the
+// agent anything queued before it stops; the async one watches for 15 minutes
+// after the turn ends and wakes an idle agent when a click lands.
+
+const SETTINGS = path.join(HOME, ".claude", "settings.json");
+const AWAIT = path.join(SRC, "scripts", "await.mjs");
+const MARK = "variate/scripts/await.mjs";
+
+function variateHooks() {
+  const ws = '"${CLAUDE_PROJECT_DIR:-$PWD}/.variate"';
+  return [
+    { type: "command", timeout: 15, command: `node "${AWAIT}" --ws ${ws} --peek --hook` },
+    { type: "command", timeout: 920, asyncRewake: true, command: `node "${AWAIT}" --ws ${ws} --wake --timeout 900` },
+  ];
+}
+
+function installHooks() {
+  if (!fs.existsSync(path.dirname(SETTINGS))) {
+    say("HOOKS", "no ~/.claude here, so Claude Code is not installed; nothing to do");
+    return;
+  }
+  let raw = null, json = {};
+  if (fs.existsSync(SETTINGS)) {
+    raw = fs.readFileSync(SETTINGS, "utf8");
+    try { json = JSON.parse(raw); } catch {
+      say("HOOKS", `${SETTINGS} is not valid JSON; leaving it alone`);
+      return;
+    }
+  }
+
+  const groups = (json.hooks?.Stop ?? []).filter(Boolean);
+  const isOurs = (g) => (g.hooks ?? []).some((h) => String(h.command ?? "").includes(MARK));
+  const others = groups.filter((g) => !isOurs(g));
+  const had = groups.length !== others.length;
+
+  if (args.remove) {
+    if (!had) { say("HOOKS", "none of ours installed"); return; }
+    if (dry) { say("HOOKS", `would remove variate's Stop hooks from ${SETTINGS}`); return; }
+    writeSettings(json, others, raw);
+    say("HOOKS", `removed from ${SETTINGS}`);
+    return;
+  }
+
+  if (dry) {
+    say("HOOKS", `would ${had ? "refresh" : "add"} variate's Stop hooks in ${SETTINGS}`);
+    return;
+  }
+  writeSettings(json, [...others, { hooks: variateHooks() }], raw);
+  say("HOOKS", `${had ? "refreshed" : "added"} in ${SETTINGS}`);
+  say("", "a card click now reaches your agent while it sits idle");
+  say("", "restart Claude Code, or open a new session, for it to take effect");
+}
+
+function writeSettings(json, stopGroups, raw) {
+  // Back up whatever was there first: this is the user's own settings file,
+  // and it is usually much more than variate's two lines.
+  if (raw != null) {
+    const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 15);
+    fs.writeFileSync(`${SETTINGS}.bak-${stamp}`, raw);
+  }
+  const next = { ...json, hooks: { ...(json.hooks ?? {}) } };
+  if (stopGroups.length) next.hooks.Stop = stopGroups;
+  else delete next.hooks.Stop;
+  if (!Object.keys(next.hooks).length) delete next.hooks;
+  const tmp = `${SETTINGS}.tmp-${process.pid}`;
+  fs.writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n");
+  fs.renameSync(tmp, SETTINGS);
+}
+
+if (args.hooks) {
+  installHooks();
+  process.exit(0);
+}
 
 function parentExists(dir) {
   // Only install where the agent already lives: creating ~/.codex on a
@@ -84,5 +176,6 @@ else if (args.remove) say("DONE", `${installed} removed, ${skipped} untouched`);
 else {
   say("DONE", `${installed} installed, ${skipped} skipped`);
   say("USE", 'in any project, ask your agent for "four takes on the hero"');
+  say("HOOKS", "optional, Claude Code: rerun with --hooks so a card click reaches an idle agent");
   say("MANUAL", `any other agent: point it at ${path.join(SRC, "AGENTS.md")}`);
 }

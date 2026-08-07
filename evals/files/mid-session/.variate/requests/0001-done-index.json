@@ -1,0 +1,8 @@
+{
+  "v": 3,
+  "id": "0001",
+  "type": "done",
+  "createdAt": "2026-08-03T14:00:00.000Z",
+  "label": "keep 3 of index",
+  "params": { "set": "index", "n": 3, "label": "the ledger of light" }
+}
