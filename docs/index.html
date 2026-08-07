@@ -62,7 +62,13 @@
   .col{ max-width: 720px; margin: 0 auto; padding: 0 24px }
   section, footer{ border-top: 1px solid var(--line) }
   .sr{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%) }
-  h2{ font: 600 17px/1.4 var(--sans); letter-spacing: .01em; margin-bottom: 40px; text-wrap: balance }
+  /* Every section opens the same way: a statement, then the turn under it in
+     dim. Display size, tight tracking, short measure. */
+  h2, .sub{
+    font: 500 clamp(21px, 2.9vw, 28px)/1.3 var(--sans);
+    letter-spacing: -.015em; max-width: 26ch; text-wrap: balance;
+  }
+  .sub{ color: var(--dim); margin-bottom: 44px }
 
   /* masthead */
   .mast{ padding: 108px 0 84px }
@@ -75,8 +81,10 @@
   .mastlinks a{ color: var(--dim) }
   .mastlinks a:hover{ color: var(--fg) }
 
-  /* the demo */
+  /* the demo, wider than the rest on purpose: it is the product, and the
+     card docked under it belongs to this section and no other */
   .demo{ padding: 84px 0 96px }
+  .demo .col{ max-width: 1060px }
   .shots{
     position: relative; aspect-ratio: 16 / 10;
     border-radius: 14px; overflow: hidden;
@@ -90,35 +98,43 @@
   .demo figcaption{ margin-top: 24px; font-size: 13px; color: var(--dim); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap }
   .demo figcaption .k{ color: var(--fg) }
 
-  /* the round */
+  /* the round: a numbered walk, so the whole loop reads in one pass */
   .round{ padding: 84px 0 96px }
-  .step{ display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 16px; padding: 24px 0 }
-  .step > div{ min-width: 0 }
-  .step + .step{ border-top: 1px solid var(--line) }
-  .step h3{ font: 500 14px/1.6 var(--sans) }
-  .step h3 i{ font-style: normal; color: var(--dim); font-variant-numeric: tabular-nums; display: block; font-weight: 400; font-size: 12px }
-  .step p{ color: var(--dim); font-size: 14px; max-width: 44em }
-  .step p .k, .why .k{ color: var(--fg) }
-  .step .cmd{ margin-top: 2px }
-  .step img{
-    display: block; width: 100%; max-width: 560px; height: auto;
-    margin-top: 16px; border-radius: 10px;
-    box-shadow: 0 0 0 1px var(--line);
+  .steps{ list-style: none; padding: 0; margin: 0 }
+  .steps li{
+    display: grid; grid-template-columns: 124px minmax(0, 1fr); gap: 20px;
+    padding: 28px 0; border-top: 1px solid var(--line);
   }
-  .step img.wide{ max-width: 640px }
+  .steps li:first-child{ border-top: 0; padding-top: 0 }
+  .steps .lead{ display: flex; align-items: baseline; gap: 8px }
+  .steps h3{ font: 500 15px/1.4 var(--sans); letter-spacing: -.005em }
+  .steps .n{ color: var(--dim); font: 400 12px/1 var(--mono); font-variant-numeric: tabular-nums }
+  .steps p{ color: var(--dim); font-size: 14.5px; max-width: 44em }
+  .steps p + p{ margin-top: 8px }
+  .steps .k, .why .k{ color: var(--fg) }
+  .steps img{
+    display: block; width: 100%; max-width: 520px; height: auto;
+    margin-top: 16px; border-radius: 10px; box-shadow: 0 0 0 1px var(--line);
+  }
+  /* a key you can actually press, drawn as one */
+  .key{
+    display: inline-block; padding: 2px 8px; margin-right: 4px;
+    border-radius: 6px; background: var(--raise);
+    box-shadow: inset 0 0 0 1px var(--line);
+    color: var(--fg); font: 400 12px/1.6 var(--mono);
+    font-variant-ligatures: none; white-space: nowrap;
+  }
 
   /* why: one decision, and the pile of machinery it removes. The strike is
      the argument, so it is the one place the accent is spent here. */
   .why{ padding: 84px 0 96px }
-  .decide{ font-size: clamp(21px, 2.9vw, 28px); line-height: 1.3; letter-spacing: -.015em; max-width: 24ch; text-wrap: balance }
-  .decide + .decide{ color: var(--dim); margin-top: 4px }
   /* Even rows rather than a greedy wrap, so the last term never sits alone
      looking like an afterthought. auto-fit with a min of min(100%, ...)
      drops to one column before it can ever overflow a phone. */
   .gone{
-    list-style: none; padding: 0; margin: 40px 0 44px;
+    list-style: none; padding: 0;
     display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr));
-    gap: 16px 24px;
+    gap: 16px 24px; margin: 0 0 40px;
   }
   .gone li{ font-size: clamp(15px, 1.7vw, 18px); color: var(--dim) }
   .gone li span{ position: relative; white-space: nowrap }
@@ -164,8 +180,8 @@
   }
   .copy:hover{ color: var(--fg) }
   .copy[data-done]{ color: var(--accent) }
-  .install p{ color: var(--dim); font-size: 14px; margin-top: 24px; max-width: 46em }
-  .install p .k{ color: var(--fg) }
+  .install .note{ color: var(--dim); font-size: 14px; margin-top: 24px; max-width: 46em }
+  .install .note .k{ color: var(--fg) }
 
   footer{ padding: 44px 0 24px; font-size: 12.5px; color: var(--dim) }
   footer .col{ display: flex; gap: 8px 24px; flex-wrap: wrap }
@@ -185,6 +201,14 @@
     font: 400 12px/1 var(--sans);
     font-variant-numeric: tabular-nums;
     white-space: nowrap; z-index: 10;
+    transition: transform .42s var(--ease), opacity .28s var(--ease);
+  }
+  /* The card belongs to the shot above it, so it arrives with that section
+     and leaves with it. Off screen it is also inert: keys that flip a
+     picture nobody can see are just confusing. */
+  .dock[data-off], .dockhint[data-off]{
+    transform: translateX(-50%) translateY(150%);
+    opacity: 0; pointer-events: none;
   }
   .dock::after{
     content: ""; position: absolute; top: 0; left: 10%; right: 10%; height: 1px;
@@ -226,7 +250,8 @@
   @media (max-width: 640px){
     .mast{ padding: 72px 0 60px }
     .demo, .round, .why, .install{ padding: 64px 0 72px }
-    .step{ grid-template-columns: minmax(0, 1fr); gap: 8px }
+    .steps li{ grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 24px 0 }
+    .demo .col{ max-width: none }
     .dock .dname, .dock .dname + .dsep{ display: none }
     .dock button{ padding: 0 8px }
     body{ padding-bottom: 120px }
@@ -243,9 +268,9 @@
   <div class="col">
     <h1 class="sr">variate</h1>
     <svg class="marksvg" viewBox="0 0 466.5 82.5" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g fill="currentColor"><rect x="0" y="24" width="10.5" height="10.5" rx="1"/><rect x="48" y="24" width="10.5" height="10.5" rx="1"/><rect x="0" y="36" width="10.5" height="10.5" rx="1"/><rect x="48" y="36" width="10.5" height="10.5" rx="1"/><rect x="0" y="48" width="10.5" height="10.5" rx="1"/><rect x="48" y="48" width="10.5" height="10.5" rx="1"/><rect x="12" y="60" width="10.5" height="10.5" rx="1"/><rect x="36" y="60" width="10.5" height="10.5" rx="1"/><rect x="24" y="72" width="10.5" height="10.5" rx="1"/><rect x="84" y="24" width="10.5" height="10.5" rx="1"/><rect x="96" y="24" width="10.5" height="10.5" rx="1"/><rect x="108" y="24" width="10.5" height="10.5" rx="1"/><rect x="120" y="36" width="10.5" height="10.5" rx="1"/><rect x="84" y="48" width="10.5" height="10.5" rx="1"/><rect x="96" y="48" width="10.5" height="10.5" rx="1"/><rect x="108" y="48" width="10.5" height="10.5" rx="1"/><rect x="120" y="48" width="10.5" height="10.5" rx="1"/><rect x="72" y="60" width="10.5" height="10.5" rx="1"/><rect x="120" y="60" width="10.5" height="10.5" rx="1"/><rect x="84" y="72" width="10.5" height="10.5" rx="1"/><rect x="96" y="72" width="10.5" height="10.5" rx="1"/><rect x="108" y="72" width="10.5" height="10.5" rx="1"/><rect x="120" y="72" width="10.5" height="10.5" rx="1"/><rect x="144" y="24" width="10.5" height="10.5" rx="1"/><rect x="168" y="24" width="10.5" height="10.5" rx="1"/><rect x="180" y="24" width="10.5" height="10.5" rx="1"/><rect x="144" y="36" width="10.5" height="10.5" rx="1"/><rect x="156" y="36" width="10.5" height="10.5" rx="1"/><rect x="192" y="36" width="10.5" height="10.5" rx="1"/><rect x="144" y="48" width="10.5" height="10.5" rx="1"/><rect x="144" y="60" width="10.5" height="10.5" rx="1"/><rect x="144" y="72" width="10.5" height="10.5" rx="1"/><rect x="216" y="0" width="10.5" height="10.5" rx="1"/><rect x="216" y="24" width="10.5" height="10.5" rx="1"/><rect x="216" y="36" width="10.5" height="10.5" rx="1"/><rect x="216" y="48" width="10.5" height="10.5" rx="1"/><rect x="216" y="60" width="10.5" height="10.5" rx="1"/><rect x="216" y="72" width="10.5" height="10.5" rx="1"/><rect x="252" y="24" width="10.5" height="10.5" rx="1"/><rect x="264" y="24" width="10.5" height="10.5" rx="1"/><rect x="276" y="24" width="10.5" height="10.5" rx="1"/><rect x="288" y="36" width="10.5" height="10.5" rx="1"/><rect x="252" y="48" width="10.5" height="10.5" rx="1"/><rect x="264" y="48" width="10.5" height="10.5" rx="1"/><rect x="276" y="48" width="10.5" height="10.5" rx="1"/><rect x="288" y="48" width="10.5" height="10.5" rx="1"/><rect x="240" y="60" width="10.5" height="10.5" rx="1"/><rect x="288" y="60" width="10.5" height="10.5" rx="1"/><rect x="252" y="72" width="10.5" height="10.5" rx="1"/><rect x="264" y="72" width="10.5" height="10.5" rx="1"/><rect x="276" y="72" width="10.5" height="10.5" rx="1"/><rect x="288" y="72" width="10.5" height="10.5" rx="1"/><rect x="324" y="12" width="10.5" height="10.5" rx="1"/><rect x="312" y="24" width="10.5" height="10.5" rx="1"/><rect x="324" y="24" width="10.5" height="10.5" rx="1"/><rect x="336" y="24" width="10.5" height="10.5" rx="1"/><rect x="348" y="24" width="10.5" height="10.5" rx="1"/><rect x="324" y="36" width="10.5" height="10.5" rx="1"/><rect x="324" y="48" width="10.5" height="10.5" rx="1"/><rect x="324" y="60" width="10.5" height="10.5" rx="1"/><rect x="336" y="72" width="10.5" height="10.5" rx="1"/><rect x="348" y="72" width="10.5" height="10.5" rx="1"/><rect x="384" y="24" width="10.5" height="10.5" rx="1"/><rect x="396" y="24" width="10.5" height="10.5" rx="1"/><rect x="408" y="24" width="10.5" height="10.5" rx="1"/><rect x="372" y="36" width="10.5" height="10.5" rx="1"/><rect x="420" y="36" width="10.5" height="10.5" rx="1"/><rect x="372" y="48" width="10.5" height="10.5" rx="1"/><rect x="384" y="48" width="10.5" height="10.5" rx="1"/><rect x="396" y="48" width="10.5" height="10.5" rx="1"/><rect x="408" y="48" width="10.5" height="10.5" rx="1"/><rect x="420" y="48" width="10.5" height="10.5" rx="1"/><rect x="372" y="60" width="10.5" height="10.5" rx="1"/><rect x="384" y="72" width="10.5" height="10.5" rx="1"/><rect x="396" y="72" width="10.5" height="10.5" rx="1"/><rect x="408" y="72" width="10.5" height="10.5" rx="1"/></g><g class="caret"><rect x="456" y="24" width="10.5" height="10.5" rx="1" class="c"/><rect x="456" y="36" width="10.5" height="10.5" rx="1" class="c"/><rect x="456" y="48" width="10.5" height="10.5" rx="1" class="c"/><rect x="456" y="60" width="10.5" height="10.5" rx="1" class="c"/><rect x="456" y="72" width="10.5" height="10.5" rx="1" class="c"/></g></svg>
-    <p class="tag">Four design variations of one file, on the localhost you are
-    already looking at. <em>Your coding agent writes them, the card flips them,
-    the one you keep is the code.</em></p>
+    <p class="tag">Four real versions of one file, on the localhost you are
+    already looking at. <em>Your agent writes them. Arrow keys flip them. The
+    one you keep is the code.</em></p>
     <nav class="mastlinks" aria-label="primary">
       <a href="https://github.com/Luffixos/variate">GitHub</a>
       <a href="#install">Install</a>
@@ -263,8 +288,8 @@
         <img src="img/state-4.webp" alt="The same page, hero led by five pot silhouettes on a shelf, the card on position 4, named: the shelf" width="1440" height="900" data-n="4">
       </div>
       <figcaption>
-        <span>Flipping rewrites the real file on disk; your own dev server re-renders it.</span>
-        <span><span class="k">enter</span> keeps the one you are looking at.</span>
+        <span>Flipping writes the real file. Your dev server re-renders it.</span>
+        <span><span class="k">Try it.</span> The card down there is live.</span>
       </figcaption>
     </figure>
   </div>
@@ -272,57 +297,68 @@
 
 <section class="round" aria-label="how a round works">
   <div class="col">
-    <h2>The round: one question, four real answers</h2>
+    <h2>Ask. Flip. Keep.</h2>
+    <p class="sub">That is the whole loop.</p>
 
-    <div class="step">
-      <h3>ask<i>in your agent</i></h3>
-      <div>
-        <p class="cmd">/variate give me four takes on the hero</p>
-        <p style="margin-top:12px">It writes four drop-in alternatives of that one file, in your
-        stack and your design tokens, and puts its recommendation on the page.
-        In an empty folder it drafts four fresh designs instead.</p>
-      </div>
-    </div>
+    <ol class="steps">
 
-    <div class="step">
-      <h3>flip<i>← → or 1-9</i></h3>
-      <div>
-        <p>Each position wears a name, and the menu reads the round as a
-        question: what each direction tries, and <span class="k">what it costs</span>,
-        where you actually decide.</p>
-        <img src="img/menu.webp" alt="The card's menu, open: the question, what should the hero lead with, and four named positions each listing its cost" width="1949" height="1020">
-      </div>
-    </div>
+      <li>
+        <div class="lead"><span class="n">01</span><h3>Ask</h3></div>
+        <div>
+          <p class="cmd">/variate four takes on the hero</p>
+          <p>Four real versions of that one file. Your stack, your tokens,
+          your words. Nothing new gets installed.</p>
+        </div>
+      </li>
 
-    <div class="step">
-      <h3>steer<i>refine</i></h3>
-      <div>
-        <p>One line bends the round without restarting it, and it takes the
-        thought you actually have: <span class="k">2's layout with 3's
-        palette</span>. Each part arrives whole from one position, never
-        blended. What you turn down is remembered, so it does not come back
-        two rounds later as a fresh idea.</p>
-        <img src="img/refine.webp" class="wide" alt="The refine input above the card, with a typed steer: more like this, but calmer" width="1949" height="474">
-      </div>
-    </div>
+      <li>
+        <div class="lead"><span class="n">02</span><h3>Flip</h3></div>
+        <div>
+          <p><span class="key">&larr;</span><span class="key">&rarr;</span>
+          and the page really changes. Each one has a name and tells you
+          <span class="k">what it costs</span>, so you read the tradeoff
+          exactly where you decide.</p>
+          <img src="img/menu.webp" alt="The card's menu, open: the question, what should the hero lead with, and four named versions each listing its cost" width="1949" height="1020">
+        </div>
+      </li>
 
-    <div class="step">
-      <h3>point<i>pick</i></h3>
-      <div>
-        <p>Click any section of your page to open the next round on it. The
-        page is only ever measured, never touched.</p>
-        <img src="img/pick.webp" class="wide" alt="Pick mode: a violet highlight and section tag over the features grid of the page" width="2880" height="1800">
-      </div>
-    </div>
+      <li>
+        <div class="lead"><span class="n">03</span><h3>Steer</h3></div>
+        <div>
+          <p>Say <span class="k">calmer</span>. Or mix them:
+          <span class="k">2's layout with 3's palette</span>. Each part comes
+          whole from one version, never averaged into mush.</p>
+          <p>What you turn down is remembered. Dead ideas stay dead.</p>
+          <img src="img/refine.webp" alt="The refine input above the card, with a typed steer: 2's layout with 3's palette" width="1949" height="474">
+        </div>
+      </li>
 
+      <li>
+        <div class="lead"><span class="n">04</span><h3>Keep</h3></div>
+        <div>
+          <p><span class="key">enter</span> and that version is your file.
+          The others are gone. <span class="k">git diff</span> shows the
+          design you chose and nothing else.</p>
+        </div>
+      </li>
+
+      <li>
+        <div class="lead"><span class="n">05</span><h3>Point</h3></div>
+        <div>
+          <p>Click any part of your page to start the next round there. The
+          page is only ever measured, never touched.</p>
+          <img src="img/pick.webp" alt="Pick mode: a violet highlight and section tag over the features grid of the page" width="2880" height="1800">
+        </div>
+      </li>
+
+    </ol>
   </div>
 </section>
 
 <section class="why" aria-label="why it is built this way">
   <div class="col">
-    <h2>Built on one decision</h2>
-    <p class="decide">The flip writes your real file.</p>
-    <p class="decide">So none of this exists:</p>
+    <h2>The flip writes your real file.</h2>
+    <p class="sub">So none of this exists:</p>
     <ul class="gone">
       <li><span>preview server</span></li>
       <li><span>iframe</span></li>
@@ -331,23 +367,24 @@
       <li><span>hydration risk</span></li>
       <li><span>apply step</span></li>
     </ul>
-    <p class="then">A variant is just a .tsx, a .vue, a .css. Your file is
-    position 1, never edited. Hand edits are adopted, never lost. And
-    <span class="k">end</span> leaves the design in your diff and nothing else.</p>
+    <p class="then">A version is just a .tsx, a .vue, a .css. Yours sits at
+    position 1 and is never edited. Edit the live file by hand and that gets
+    kept too.</p>
   </div>
 </section>
 
 <section class="install" id="install" aria-label="install">
   <div class="col">
-    <h2>Two commands, every agent at once</h2>
+    <h2>Two commands.</h2>
+    <p class="sub">Then ask for four takes.</p>
     <div class="cmd"><span class="c"># every agent on this machine, in one go</span>
 <span class="x">git</span> clone https://github.com/Luffixos/variate ~/code/variate
 <span class="x">node</span> ~/code/variate/scripts/install.mjs<button class="copy" type="button">copy</button></div>
     <div class="cmd"><span class="c"># optional, Claude Code: a card click reaches your agent while it sits idle</span>
 <span class="x">node</span> ~/code/variate/scripts/install.mjs <span class="f">--hooks</span><button class="copy" type="button">copy</button></div>
-    <p>That links it into <span class="k">Claude Code</span>, <span class="k">Codex
-    CLI</span>, and <span class="k">opencode</span> in one go, and a
-    <span class="k">git pull</span> updates them all. Anything else that can run
+    <p class="note">One install covers <span class="k">Claude Code</span>,
+    <span class="k">Codex CLI</span> and <span class="k">opencode</span>, and
+    <span class="k">git pull</span> updates all three. Anything else that runs
     a shell command works too: point it at AGENTS.md.</p>
   </div>
 </section>
@@ -407,12 +444,13 @@
     const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
     document.getElementById("install").scrollIntoView({ behavior: still ? "auto" : "smooth" });
   }
-  // The hint has one job, and it is done once the demo is behind you: a pill
-  // pinned over the install commands is just something in the way.
+  // The card rides with the section it belongs to.
   if ("IntersectionObserver" in window) {
     const io = new IntersectionObserver(([e]) => {
-      if (!e.isIntersecting) { hint.setAttribute("data-gone", ""); io.disconnect(); }
-    }, { threshold: 0 });
+      const here = e.isIntersecting;
+      dock.toggleAttribute("data-off", !here);
+      hint.toggleAttribute("data-off", !here);
+    }, { threshold: 0.12 });
     io.observe(document.querySelector(".demo"));
   }
 
@@ -424,6 +462,7 @@
   dock.querySelector(".dkeep").addEventListener("click", keep);
   addEventListener("keydown", (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (dock.hasAttribute("data-off")) return;
     if (e.key === "ArrowRight") go((at % 4) + 1);
     else if (e.key === "ArrowLeft") go(((at + 2) % 4) + 1);
     else if (e.key >= "1" && e.key <= "4") go(+e.key);
