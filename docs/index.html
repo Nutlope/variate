@@ -173,13 +173,19 @@
   .cmd .f{ color: var(--accent) }      /* a flag */
   .copy{
     all: unset; box-sizing: border-box; position: absolute; top: 8px; right: 8px;
-    font: 400 11px/1 var(--sans); color: var(--dim);
+    color: var(--dim);
     padding: 8px; border-radius: 8px; cursor: pointer;
     background: var(--panel);
+    box-shadow: inset 0 0 0 1px var(--line);
     transition: color .18s var(--ease);
   }
   .copy:hover{ color: var(--fg) }
   .copy[data-done]{ color: var(--accent) }
+  .copy svg{ display: block }
+  .copy .ic-check{ display: none }
+  .copy[data-done] .ic-copy{ display: none }
+  .copy[data-done] .ic-check{ display: block }
+  .herocmd{ margin-top: 32px; max-width: 400px }
   .install .note{ color: var(--dim); font-size: 14px; margin-top: 24px; max-width: 46em }
   .install .note .k{ color: var(--fg) }
 
@@ -271,6 +277,7 @@
     <p class="tag">Four real versions of one file, on the localhost you are
     already looking at. <em>Your agent writes them. Arrow keys flip them. The
     one you keep is the code.</em></p>
+    <div class="cmd herocmd"><span class="x">npx</span> skills add Luffixos/variate<button class="copy" type="button" aria-label="copy command"><svg class="ic-copy" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3.5 10.5h-.5a1.5 1.5 0 0 1-1.5-1.5V4a1.5 1.5 0 0 1 1.5-1.5H8A1.5 1.5 0 0 1 9.5 4v.5"/></svg><svg class="ic-check" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg></button></div>
     <nav class="mastlinks" aria-label="primary">
       <a href="https://github.com/Luffixos/variate">GitHub</a>
       <a href="#install">Install</a>
@@ -375,25 +382,27 @@
 
 <section class="install" id="install" aria-label="install">
   <div class="col">
-    <h2>Two commands.</h2>
+    <h2>One command.</h2>
     <p class="sub">Then ask for four takes.</p>
-    <div class="cmd"><span class="c"># every agent on this machine, in one go</span>
+    <div class="cmd"><span class="x">npx</span> skills add Luffixos/variate<button class="copy" type="button" aria-label="copy command"><svg class="ic-copy" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3.5 10.5h-.5a1.5 1.5 0 0 1-1.5-1.5V4a1.5 1.5 0 0 1 1.5-1.5H8A1.5 1.5 0 0 1 9.5 4v.5"/></svg><svg class="ic-check" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg></button></div>
+    <div class="cmd"><span class="c"># no npx: one clone covers every agent on the machine, and git pull updates them all</span>
 <span class="x">git</span> clone https://github.com/Luffixos/variate ~/code/variate
-<span class="x">node</span> ~/code/variate/scripts/install.mjs<button class="copy" type="button">copy</button></div>
-    <div class="cmd"><span class="c"># optional, Claude Code: a card click reaches your agent while it sits idle</span>
-<span class="x">node</span> ~/code/variate/scripts/install.mjs <span class="f">--hooks</span><button class="copy" type="button">copy</button></div>
-    <p class="note">One install covers <span class="k">Claude Code</span>,
-    <span class="k">Codex CLI</span> and <span class="k">opencode</span>, and
-    <span class="k">git pull</span> updates all three. Anything else that runs
-    a shell command works too: point it at AGENTS.md.</p>
+<span class="x">node</span> ~/code/variate/scripts/install.mjs<button class="copy" type="button" aria-label="copy command"><svg class="ic-copy" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3.5 10.5h-.5a1.5 1.5 0 0 1-1.5-1.5V4a1.5 1.5 0 0 1 1.5-1.5H8A1.5 1.5 0 0 1 9.5 4v.5"/></svg><svg class="ic-check" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg></button></div>
+    <p class="note">Works with <span class="k">Claude Code</span>,
+    <span class="k">Codex CLI</span>, <span class="k">opencode</span>,
+    <span class="k">Cursor</span>, and anything else that runs a shell
+    command: point it at AGENTS.md. The optional Claude Code hooks, so a
+    card click reaches an idle agent, live in the
+    <a href="https://github.com/Luffixos/variate">README</a>.</p>
+    <p class="note">Everything stays on <span class="k">127.0.0.1</span>: no
+    accounts, no telemetry, no network calls.</p>
   </div>
 </section>
 
 <footer>
   <div class="col">
-    <span>variate · MIT</span>
-    <span>127.0.0.1 only · no accounts · no telemetry</span>
-    <a href="https://github.com/Luffixos/variate">github.com/Luffixos/variate</a>
+    <span>/variate</span>
+    <span>Made by Hassan &amp; Youssef</span>
   </div>
 </footer>
 
@@ -475,15 +484,18 @@
   });
   go(2, false);
 
-  // Copy buttons on the install blocks.
-  document.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", async () => {
+  // Copy buttons on the command blocks. The icon flips to a check only when
+  // the clipboard write really succeeded; a denied clipboard shows nothing,
+  // because a false "copied" is worse than none.
+  document.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", () => {
     const text = [...b.parentNode.childNodes]
       .filter((n) => n.nodeType === 3 || (n.nodeType === 1 && !n.classList.contains("copy") && !n.classList.contains("c")))
       .map((n) => n.textContent).join("").trim();
-    try { await navigator.clipboard.writeText(text); } catch {}
-    b.textContent = "copied";
-    b.setAttribute("data-done", "");
-    setTimeout(() => { b.textContent = "copy"; b.removeAttribute("data-done"); }, 1400);
+    navigator.clipboard.writeText(text).then(() => {
+      b.setAttribute("data-done", "");
+      b.setAttribute("aria-label", "copied");
+      setTimeout(() => { b.removeAttribute("data-done"); b.setAttribute("aria-label", "copy command"); }, 1400);
+    }).catch(() => {});
   }));
 </script>
 
