@@ -83,8 +83,10 @@ echo "$OUT" | J 'j[0].label' | grep -q '4 takes of "the hero"'
 # draining an empty queue is a normal turn, not a failure: it must exit 0 so
 # a harness never paints routine polling red in the user's transcript
 node "$V" drain --root "$WS" --ack 0001 --note "drew them" | grep -qx '\[\]'
-test -f "$WS/.variate/requests/done/0001-vary.json"
-grep -q '"result": "ok"' "$WS/.variate/requests/done/0001-vary.json"
+# the filename carries the ask's context (slugged), so an idle-agent
+# notification can name what the click was about
+test -f "$WS/.variate/requests/done/0001-vary-the-hero.json"
+grep -q '"result": "ok"' "$WS/.variate/requests/done/0001-vary-the-hero.json"
 
 echo "-- an unknown request type is refused"
 test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" -d '{"type":"rm -rf"}' "$B/request")" = "400"
@@ -130,5 +132,36 @@ node "$V" drain --root "$WS" --ack "$ID2" --note "two tighter takes" > /dev/null
 set -e
 test -f "$WS/.variate/requests/done/$ID1-done-page.json"
 test -f "$WS/.variate/requests/done/$ID2-more-page.json"
+
+echo "-- a hostile set name cannot escape the queue directory"
+curl -s -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
+  -d '{"type":"vary","params":{"set":"/../../../../../../tmp/variate-pwn"}}' "$B/request" > /dev/null
+test ! -e /tmp/variate-pwn.json
+BAD=$(ls "$WS/.variate/requests" | grep -E '\.json$' | grep -cvE '^[0-9]{4}-(vary|more|done)(-[a-z0-9-]+)?\.json$' || true)
+test "$BAD" = "0"
+
+echo "-- unknown ask params are dropped, oversized ones capped"
+LONG=$(printf 'a%.0s' $(seq 1 500))
+curl -s -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
+  -d "{\"type\":\"vary\",\"params\":{\"count\":4,\"evil\":\"x\",\"hint\":\"$LONG\"}}" "$B/request" \
+  | J '(j.params.evil === undefined) + " " + j.params.hint.length' | grep -qx 'true 140'
+OUT=$(node "$V" drain --root "$WS")
+IDA=$(echo "$OUT" | J 'j[0].id'); IDB=$(echo "$OUT" | J 'j[1].id')
+set +e
+node "$V" drain --root "$WS" --ack "$IDA" > /dev/null
+node "$V" drain --root "$WS" --ack "$IDB" > /dev/null
+set -e
+
+echo "-- dotfiles and out-of-root symlinks are never served"
+test "$(curl -s -o /dev/null -w '%{http_code}' "$B/index.html")" = "200"
+test "$(curl -s -o /dev/null -w '%{http_code}' "$B/.variate/token")" = "403"
+test "$(curl -s -o /dev/null -w '%{http_code}' "$B/.env")" = "403"
+test "$(curl -s -o /dev/null -w '%{http_code}' "$B/.git/config")" = "403"
+ln -s /etc "$WS/outside"
+test "$(curl -s -o /dev/null -w '%{http_code}' "$B/outside/hosts")" = "403"
+rm "$WS/outside"
+
+echo "-- every response says nosniff"
+curl -s -D- -o /dev/null "$B/health" | grep -qi 'x-content-type-options: nosniff'
 
 echo "smoke-http PASS"

@@ -111,6 +111,13 @@ function writeSettings(json, stopGroups, raw) {
   if (raw != null) {
     const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 15);
     fs.writeFileSync(`${SETTINGS}.bak-${stamp}`, raw);
+    // Keep the two newest backups only: the settings file holds the user's
+    // own config, and copies of it should not pile up forever.
+    const dir = path.dirname(SETTINGS);
+    const baks = fs.readdirSync(dir).filter((f) => f.startsWith("settings.json.bak-")).sort();
+    for (const f of baks.slice(0, -2)) {
+      try { fs.rmSync(path.join(dir, f), { force: true }); } catch { /* fine */ }
+    }
   }
   const next = { ...json, hooks: { ...(json.hooks ?? {}) } };
   if (stopGroups.length) next.hooks.Stop = stopGroups;
@@ -164,7 +171,14 @@ for (const t of chosen) {
 
   fs.mkdirSync(path.dirname(t.dir), { recursive: true });
   if (has) fs.rmSync(t.dir, { force: true });
-  if (args.copy) fs.cpSync(SRC, t.dir, { recursive: true, filter: (s) => !s.includes("/.git/") });
+  // A copy install ships the runtime only: the marketing site, the eval
+  // fixtures and the dev harness stay in the repo. agents/ rides along
+  // because Codex reads its display metadata from the installed directory.
+  const SKIP_COPY = new Set(["docs", ".vercel", "evals", "dev", "fixtures", ".git", ".gitignore", ".DS_Store", "vercel.json"]);
+  if (args.copy) fs.cpSync(SRC, t.dir, { recursive: true, filter: (s) => {
+    const rel = path.relative(SRC, s);
+    return !rel || !SKIP_COPY.has(rel.split(path.sep)[0]);
+  } });
   else fs.symlinkSync(SRC, t.dir, "dir");
   say(t.label, `${args.copy ? "copied to" : "linked"} ${t.dir}`);
   installed++;

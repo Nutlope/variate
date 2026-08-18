@@ -174,11 +174,18 @@ export function detach(root, ledgerPath) {
   return { ok: true, file: led.file };
 }
 
-/** Add a line to .gitignore exactly once, and be able to take it back. */
+/** Add a line to .gitignore exactly once, and be able to take it back. In a
+ *  git repo with no .gitignore at all, create one: the promise that .variate/
+ *  never lands in a commit must not depend on the project already having the
+ *  file. With no git there is nothing to ignore into; report that instead. */
 export function ignoreLine(root, line) {
   const gi = path.join(root, ".gitignore");
   const src = readSafe(gi);
-  if (src == null) return { skipped: "no .gitignore" };
+  if (src == null) {
+    if (!fs.existsSync(path.join(root, ".git"))) return { skipped: "no git repo" };
+    atomicWrite(gi, line + "\n");
+    return { created: true };
+  }
   if (src.split("\n").some((l) => l.trim() === line)) return { already: true };
   atomicWrite(gi, src.replace(/\n*$/, "\n") + line + "\n");
   return { added: true };
@@ -189,6 +196,12 @@ export function unignoreLine(root, line) {
   const src = readSafe(gi);
   if (src == null) return { skipped: true };
   const kept = src.split("\n").filter((l) => l.trim() !== line);
+  // A file that held nothing but variate's own line goes back out with it,
+  // so end leaves the tree exactly as it was found.
+  if (kept.every((l) => !l.trim())) {
+    try { fs.rmSync(gi, { force: true }); } catch { /* fine */ }
+    return { removed: true, file: true };
+  }
   atomicWrite(gi, kept.join("\n").replace(/\n{3,}$/, "\n"));
   return { removed: true };
 }

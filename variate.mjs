@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import {
   paths, listSets, readSet, switchTo, narrowTo, slug, defaultPortFor,
   readSafe, readJsonSafe, atomicWrite, readBoard, recordSettled, stripMarker,
+  escapeRe,
 } from "./src/core.mjs";
 import { detect, attach, detach, isAttached, ignoreLine, unignoreLine } from "./src/attach.mjs";
 import { checkSet, checkPlan, parserFor } from "./src/check.mjs";
@@ -250,7 +251,9 @@ async function cmdUp() {
       ? `node ${path.join(HERE, "variate.mjs")} add index.html --new --n 4 --root ${P.ROOT}   then write 1..4`
       : `node ${path.join(HERE, "variate.mjs")} add <a component or page file> --root ${P.ROOT}`);
   key("KEYS", "← → flip · 1-9 jump · again to replay · enter keep · [ ] section · esc hide · ? help");
-  if (ig.added) key("IGNORE", "added .variate/ to .gitignore");
+  if (ig.created) key("IGNORE", "created .gitignore with .variate/ in it");
+  else if (ig.added) key("IGNORE", "added .variate/ to .gitignore");
+  else if (ig.skipped === "no git repo") key("IGNORE", "no git repo here, so nothing ignores .variate/");
   process.exit(already ? 2 : 0);
 }
 
@@ -274,7 +277,7 @@ function referenced(abs) {
       if (e.isDirectory()) { if (!skip.has(e.name)) walk(p, depth + 1); continue; }
       if (p === abs || !/\.(m?[jt]sx?|vue|svelte|astro|html|erb|php|py|rb)$/i.test(e.name)) continue;
       const src = readSafe(p);
-      if (src && new RegExp(`["'\`][^"'\`]*\\b${stem}\\b`).test(src)) hits++;
+      if (src && new RegExp(`["'\`][^"'\`]*\\b${escapeRe(stem)}\\b`).test(src)) hits++;
     }
   };
   walk(P.ROOT, 0);

@@ -101,9 +101,20 @@ const HOLDING = `<!doctype html>
 <body><p>drafting</p></body></html>
 `;
 
+const REAL_ROOTS = new Map();
+function realRootFor(root) {
+  let r = REAL_ROOTS.get(root);
+  if (!r) { r = fs.realpathSync(root); REAL_ROOTS.set(root, r); }
+  return r;
+}
+
 function serveStatic(root, urlPath, res, send) {
   let rel = decodeURIComponent(urlPath);
   if (rel.endsWith("/")) rel += "index.html";
+  // No dotfiles, ever: /.variate holds the token, and /.env or /.git are
+  // exactly what a drive-by localhost probe hopes for. This also refuses
+  // /.well-known, which a design sidecar has no business serving.
+  if (rel.split("/").some((s) => s.startsWith("."))) return send(res, 403, "no");
   const file = path.normalize(path.join(root, rel));
   if (file !== root && !file.startsWith(root + path.sep)) return send(res, 403, "no");
   let target = file;
@@ -115,6 +126,14 @@ function serveStatic(root, urlPath, res, send) {
     return send(res, 200, withCard(HOLDING), { "Content-Type": STATIC_MIME[".html"] });
   }
   if (!fs.existsSync(target)) return send(res, 404, "not found");
+  // The lexical check above cannot see through links: a symlink inside the
+  // project (node_modules, an uploads folder) may point anywhere on disk.
+  // Resolve both sides for real before reading; the root gets the same
+  // treatment because /tmp itself is a link on macOS.
+  let real;
+  try { real = fs.realpathSync(target); } catch { return send(res, 404, "not found"); }
+  const rootReal = realRootFor(root);
+  if (real !== rootReal && !real.startsWith(rootReal + path.sep)) return send(res, 403, "no");
   const ext = path.extname(target).toLowerCase();
   const type = STATIC_MIME[ext] ?? "application/octet-stream";
   if (ext === ".html" || ext === ".htm") {
@@ -200,7 +219,7 @@ export function startSidecar({ root, port, serve = false }) {
   }
 
   function send(res, code, body, headers = {}) {
-    res.writeHead(code, { "Cache-Control": "no-store", ...headers });
+    res.writeHead(code, { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...headers });
     res.end(body);
   }
   const sendJson = (res, code, obj, extra = {}) =>
@@ -254,6 +273,7 @@ export function startSidecar({ root, port, serve = false }) {
           res.writeHead(200, {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
             Connection: "keep-alive",
             ...cors,
           });

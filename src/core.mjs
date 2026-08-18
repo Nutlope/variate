@@ -47,6 +47,9 @@ export function slug(raw) {
   return s || "set";
 }
 
+/** Escape a string for literal use inside a RegExp source. */
+export const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /**
  * Stable per-project port in 4100-4899, so two projects' cards never contend
  * and the script tag URL is deterministic for a given root.
@@ -352,7 +355,7 @@ export function switchTo(P, name, n, opts = {}) {
 export function stripMarker(s) {
   const src = readSafe(s.target);
   if (src == null) return false;
-  const esc = String(s.name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const esc = escapeRe(s.name);
   // Only in attribute position. The same string can legitimately appear as a
   // CSS selector the variant styles itself with ([data-variate-section="x"]),
   // and a blind replace there shreds the selector and ships the kept design

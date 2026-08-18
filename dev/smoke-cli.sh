@@ -394,4 +394,23 @@ node "$V" end --root "$WS2" > /dev/null
 test -z "$(cd "$WS2" && git status --porcelain)"
 pkill -f "sidecar.mjs --root $WS2" 2>/dev/null || true
 
+echo "-- a git repo with no .gitignore gets one, and end takes it back out"
+GI=$(mktemp -d)/gi
+mkdir -p "$GI"; cp fixtures/static/index.html "$GI/"
+(cd "$GI" && git init -q . && git add -A && git -c user.email=t@t -c user.name=t commit -qm base)
+node "$V" up --root "$GI" --port $((PORT + 23)) | grep -q "created .gitignore"
+grep -qx '.variate/' "$GI/.gitignore"
+node "$V" add "$GI/index.html" --name page --root "$GI" > /dev/null
+node "$V" end --root "$GI" > /dev/null
+test ! -f "$GI/.gitignore"
+test -z "$(cd "$GI" && git status --porcelain)"
+pkill -f "sidecar.mjs --root $GI" 2>/dev/null || true
+
+echo "-- a filename full of regex metachars still adds cleanly"
+RX=$(mktemp -d)/rx
+mkdir -p "$RX"
+printf '<h1>weird</h1>\n' > "$RX/Hero (v2)+final.html"
+node "$V" add "$RX/Hero (v2)+final.html" --root "$RX" > /dev/null
+node "$V" status --root "$RX" --json | J 'j.sets.length' | grep -qx 1
+
 echo "smoke-cli PASS"

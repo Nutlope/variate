@@ -27,7 +27,7 @@ const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "
 http.createServer((req, res) => {
   const rel = decodeURIComponent(new URL(req.url, "http://x").pathname);
   let file = path.normalize(path.join(DIR, rel === "/" ? "index.html" : rel));
-  if (!file.startsWith(DIR)) { res.writeHead(403).end("no"); return; }
+  if (file !== DIR && !file.startsWith(DIR + path.sep)) { res.writeHead(403).end("no"); return; }
   if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, "index.html");
   if (!fs.existsSync(file)) { res.writeHead(404).end("not found"); return; }
   res.writeHead(200, { "Content-Type": MIME[path.extname(file)] ?? "text/plain", "Cache-Control": "no-store" });
