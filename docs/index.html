@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>variate</title>
-<meta name="description" content="Four design variations of one file, on the localhost you are already looking at. A skill for Claude Code, Codex CLI, opencode, and any agent that can run a shell command.">
+<meta name="description" content="Your agent writes four real versions of one file; arrow keys flip them on your own localhost. A skill for Claude Code, Codex CLI, opencode, and Cursor.">
 <meta property="og:title" content="variate">
-<meta property="og:description" content="Four design variations of one file, on the localhost you are already looking at.">
+<meta property="og:description" content="Four real versions of one file, flipped with the arrow keys on your own localhost.">
 <meta property="og:image" content="https://variate-skill.vercel.app/img/og.png">
 <meta property="og:url" content="https://variate-skill.vercel.app">
 <meta property="og:type" content="website">
@@ -295,7 +295,7 @@
         <img src="img/state-4.webp" alt="The same page, hero led by five pot silhouettes on a shelf, the card on position 4, named: the shelf" width="1440" height="900" data-n="4">
       </div>
       <figcaption>
-        <span>Flipping writes the real file. Your dev server re-renders it.</span>
+        <span>Flipping writes the real file. Vite re-renders it in under 150ms, Next in 200-400ms.</span>
         <span><span class="k">Try it.</span> The card down there is live.</span>
       </figcaption>
     </figure>
@@ -314,7 +314,7 @@
         <div>
           <p class="cmd">/variate four takes on the hero</p>
           <p>Four real versions of that one file. Your stack, your tokens,
-          your words. Nothing new gets installed.</p>
+          your words. Nothing gets added to your project.</p>
         </div>
       </li>
 
@@ -374,28 +374,29 @@
       <li><span>hydration risk</span></li>
       <li><span>apply step</span></li>
     </ul>
-    <p class="then">A version is just a .tsx, a .vue, a .css. Yours sits at
-    position 1 and is never edited. Edit the live file by hand and that gets
-    kept too.</p>
+    <p class="then">A version is just a file: a .tsx on Next, a .vue, a
+    .svelte, an .erb, a plain .html. Yours sits at position 1 and is never
+    edited. Edit the live file by hand and that gets kept too.</p>
   </div>
 </section>
 
 <section class="install" id="install" aria-label="install">
   <div class="col">
     <h2>One command.</h2>
-    <p class="sub">Then ask for four takes.</p>
+    <p class="sub">Then ask your agent for four takes.</p>
     <div class="cmd"><span class="x">npx</span> skills add Luffixos/variate<button class="copy" type="button" aria-label="copy command"><svg class="ic-copy" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3.5 10.5h-.5a1.5 1.5 0 0 1-1.5-1.5V4a1.5 1.5 0 0 1 1.5-1.5H8A1.5 1.5 0 0 1 9.5 4v.5"/></svg><svg class="ic-check" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg></button></div>
     <div class="cmd"><span class="c"># no npx: one clone covers every agent on the machine, and git pull updates them all</span>
 <span class="x">git</span> clone https://github.com/Luffixos/variate ~/code/variate
 <span class="x">node</span> ~/code/variate/scripts/install.mjs<button class="copy" type="button" aria-label="copy command"><svg class="ic-copy" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3.5 10.5h-.5a1.5 1.5 0 0 1-1.5-1.5V4a1.5 1.5 0 0 1 1.5-1.5H8A1.5 1.5 0 0 1 9.5 4v.5"/></svg><svg class="ic-check" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg></button></div>
     <p class="note">Works with <span class="k">Claude Code</span>,
     <span class="k">Codex CLI</span>, <span class="k">opencode</span>,
-    <span class="k">Cursor</span>, and anything else that runs a shell
-    command: point it at AGENTS.md. The optional Claude Code hooks, so a
-    card click reaches an idle agent, live in the
+    <span class="k">Cursor</span>, and anything else that can run a shell
+    command (AGENTS.md is the whole contract). The optional Claude Code
+    hooks, which let a card click reach an idle agent, are in the
     <a href="https://github.com/Luffixos/variate">README</a>.</p>
     <p class="note">Everything stays on <span class="k">127.0.0.1</span>: no
-    accounts, no telemetry, no network calls.</p>
+    accounts, no telemetry, no network calls, and <span class="k">variate
+    end</span> leaves nothing behind but the design you chose.</p>
   </div>
 </section>
 
