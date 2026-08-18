@@ -126,9 +126,17 @@ sentence to four designs on a URL, and a first-class flow.
 
 1. **Settle the question first.** One line: what is this round actually
    asking? Everything else is an answer to it, and it goes in `plan.json`.
-2. **Resolve the target**: one file. From a phrase, grep for the words a user
-   would see on the page; if a card ask carried a `selection`, its `text` is
-   the visible copy of what they clicked. When several files could be it, ask.
+2. **Resolve the target**: one file. A card pick attaches a `selection`;
+   read it top down and stop at the first hit: `set` (the click landed in an
+   open set's marker, so that set's target is the file; extend or narrow it,
+   never a second set), `src` (a dev-build file and line; confirm with one
+   read, then trust it), `id`, `cls` and the data or aria handles in `chain`
+   (grep them literally), `url.path` (scope the search to that route's
+   files), `heading`, then `text` (grep the words a user would see).
+   `place` says what it looked like (sidebar, hero, header, footer); `media`
+   lists image alt text when the section has no copy. With no selection,
+   grep the words in the user's phrase. Still plural: ask, naming the two
+   or three candidate files.
 3. **Read the substrate before you draft**: their tokens (never raw hex),
    the target's own imports, the sections either side of it, their real copy,
    and how loud the product lets you be. `variate status` lists every

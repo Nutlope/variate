@@ -129,4 +129,22 @@ grep -q 'followLink' "$C"
 grep -q 'searchParams.set("variate"' "$C"
 grep -q 'if (!weServeThisPage()) return;' "$C"
 
+echo "-- pick stops at a set's own marker, and sees rails the markup hides"
+grep -qE 'getAttribute\("data-variate-section"\)' "$C"
+grep -q '"sidebar"' "$C"
+grep -q 'rail' "$C"
+
+echo "-- pick never forces layout: no innerText anywhere"
+! grep -qE '\.innerText' "$C"
+grep -q 'createTreeWalker' "$C"
+
+echo "-- the selection payload is versioned, capped, and framework-aware"
+grep -q 'v: 2' "$C"
+grep -q 'visibleText(node, 140)' "$C"
+grep -q '__svelte_meta' "$C"
+grep -q '__vueParentComponent' "$C"
+
+echo "-- a click on a stale hover node re-resolves rather than lying"
+grep -q 'pickNode.isConnected' "$C"
+
 echo "smoke-card PASS"

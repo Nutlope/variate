@@ -1337,7 +1337,7 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
   }
   const CSS_escape = (s) => String(s).replace(/["\\]/g, "\\$&");
 
-  const SECTIONISH = new Set(["SECTION", "HEADER", "FOOTER", "NAV", "MAIN", "ARTICLE", "ASIDE"]);
+  const SECTIONISH = new Set(["SECTION", "HEADER", "FOOTER", "NAV", "MAIN", "ARTICLE", "ASIDE", "DIALOG"]);
   function sectionAt(x, y) {
     const stack = document.elementsFromPoint(x, y);
     let node = null;
@@ -1348,27 +1348,129 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
     if (!node) return null;
     let best = node;
     for (let e = node; e && e !== document.body; e = e.parentElement) {
-      const r = e.getBoundingClientRect();
-      const pr = e.parentElement?.getBoundingClientRect();
-      const wide = pr ? r.width >= pr.width * 0.6 : false;
-      if (SECTIONISH.has(e.tagName) || (r.height >= innerHeight * 0.25 && wide)) { best = e; break; }
       best = e;
+      // An active set's own root is the exact answer; never climb past it.
+      if (e.getAttribute && e.getAttribute("data-variate-section")) return e;
+      const r = e.getBoundingClientRect();
+      // A pinned rail or bar is a section whatever its markup says.
+      const pos = getComputedStyle(e).position;
+      if ((pos === "fixed" || pos === "sticky") && (r.width >= innerWidth * 0.5 || r.height >= innerHeight * 0.5)) return e;
+      if (SECTIONISH.has(e.tagName)) return e;
+      // Geometry is judged against the VIEWPORT, never the parent: a band is
+      // a hero or a footer strip, a rail is a div-soup sidebar. The old
+      // parent-relative width test made a narrow rail unmatchable, so a
+      // sidebar click climbed all the way up and picked the page shell.
+      const band = r.height >= innerHeight * 0.25 && r.width >= innerWidth * 0.6;
+      const rail = r.height >= innerHeight * 0.6 && r.width >= 120 && r.width <= innerWidth * 0.4;
+      if (band || rail) return e;
     }
     return best;
   }
 
+  // What the click knew, gathered without touching the page. Text comes from
+  // textContent walks (see the fingerprint note above): no layout cost, no
+  // shadow-root surprises. Every cap here is re-enforced by the sidecar.
+  function visibleText(node, cap) {
+    let out = "";
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, {
+      acceptNode: (t) => {
+        const p = t.parentElement;
+        return p && p.closest("style,script,noscript,template") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    while (out.length < cap * 2) {
+      const t = walker.nextNode();
+      if (!t) break;
+      out += t.nodeValue + " ";
+    }
+    return out.replace(/\s+/g, " ").trim().slice(0, cap);
+  }
+  function headingIn(node) {
+    const h = node.querySelector && node.querySelector("h1,h2,h3,h4,h5,h6");
+    return h ? visibleText(h, 80) || null : null;
+  }
+  function chainOf(node) {
+    // From the node itself upward: the clicked element's own data-testid or
+    // aria-label is often the single best grep in the payload.
+    const chain = [];
+    for (let e = node, hops = 0; e && e !== document.body && e !== document.documentElement && hops < 6; e = e.parentElement, hops++) {
+      let s = e.tagName.toLowerCase();
+      if (e.id) s += "#" + e.id;
+      const cls = typeof e.className === "string" ? e.className.trim().split(/\s+/).filter(Boolean).slice(0, 2) : [];
+      if (cls.length) s += "." + cls.join(".");
+      for (const a of ["data-testid", "data-component", "data-cy", "aria-label"]) {
+        const v = e.getAttribute && e.getAttribute(a);
+        if (v) { s += "[" + a + "=" + v.slice(0, 24) + "]"; break; }
+      }
+      if (s !== "div" && s !== "span") chain.push(s.slice(0, 80));
+    }
+    return chain;
+  }
+  function placeOf(node, r) {
+    const vw = innerWidth, vh = innerHeight;
+    const top = r.top + scrollY;
+    const docH = Math.max(document.documentElement.scrollHeight, vh);
+    if (r.height >= vh * 0.5 && r.width <= vw * 0.4) return "sidebar";
+    if (top + r.height >= docH - 80) return "footer";
+    if (top < vh * 0.2 && r.height <= vh * 0.35 && r.width >= vw * 0.8) return "header";
+    if (top < vh * 0.4 && r.height >= vh * 0.45) return "hero";
+    return "band";
+  }
+  function srcHint(node) {
+    // Dev-build framework handles, when the stack leaves them lying around:
+    // Svelte stamps elements with their source location, Vue hangs the
+    // component file off the vnode. Free precision; absent in production.
+    try {
+      for (let e = node, hops = 0; e && hops < 6; e = e.parentElement, hops++) {
+        const sv = e.__svelte_meta && e.__svelte_meta.loc;
+        if (sv && sv.file) return String(sv.file).slice(0, 190) + ":" + sv.line + ":" + sv.column;
+        const vue = e.__vueParentComponent && e.__vueParentComponent.type && e.__vueParentComponent.type.__file;
+        if (vue) return String(vue).slice(0, 200);
+      }
+    } catch { /* not that stack */ }
+    return null;
+  }
+
   function describe(node) {
-    const text = (node.innerText || "").replace(/\s+/g, " ").trim().slice(0, 140);
-    const parent = node.parentElement;
-    const nth = parent ? [...parent.children].indexOf(node) + 1 : 0;
-    return {
+    const r = node.getBoundingClientRect();
+    const pos = getComputedStyle(node).position;
+    const marked = node.closest && node.closest("[data-variate-section]");
+    const sel = {
+      v: 2,
+      set: (marked && marked.getAttribute("data-variate-section")) || null,
       tag: node.tagName.toLowerCase(),
       id: node.id || null,
-      cls: (node.className && typeof node.className === "string" ? node.className : "").slice(0, 160) || null,
-      nth,
-      text,
-      path: location.pathname,
+      cls: (typeof node.className === "string" ? node.className : "").slice(0, 120) || null,
+      text: visibleText(node, 140) || null,
+      heading: headingIn(node),
+      chain: chainOf(node),
+      rect: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) },
+      place: placeOf(node, r),
+      pinned: pos === "sticky" || pos === "fixed" ? pos : null,
+      url: {
+        path: location.pathname,
+        search: location.search || null,
+        hash: location.hash || null,
+        title: (document.title || "").slice(0, 80) || null,
+      },
+      src: srcHint(node),
+      media: null,
     };
+    if (!sel.text && node.querySelectorAll) {
+      // No copy to grep for (an icon grid, an image hero): image alt text
+      // and aria labels are the next most distinctive words available.
+      const alts = [];
+      for (const img of node.querySelectorAll("img[alt], svg[aria-label], [role=img][aria-label]")) {
+        const a = (img.getAttribute("alt") || img.getAttribute("aria-label") || "").trim();
+        if (a) alts.push(a.slice(0, 80));
+        if (alts.length === 2) break;
+      }
+      if (alts.length) sel.media = alts;
+    }
+    for (const k of Object.keys(sel.url)) if (sel.url[k] == null) delete sel.url[k];
+    for (const k of Object.keys(sel)) if (sel[k] == null) delete sel[k];
+    if (sel.chain && !sel.chain.length) delete sel.chain;
+    return sel;
   }
 
   let pickMove = null, pickClick = null, pickNode = null;
@@ -1384,19 +1486,32 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
       const n = sectionAt(e.clientX, e.clientY);
       if (!n || n === pickNode) return;
       pickNode = n;
-      drawHighlight(n, n.tagName.toLowerCase() + (n.id ? "#" + n.id : ""), { animate: true });
+      const mk = n.getAttribute && n.getAttribute("data-variate-section");
+      drawHighlight(n, mk || n.tagName.toLowerCase() + (n.id ? "#" + n.id : ""), { animate: true });
     };
     pickClick = (e) => {
-      if (!pickNode) return;
+      // The page may have re-rendered since the hover (HMR swaps nodes
+      // wholesale), and a detached node describes a DOM the user is no
+      // longer looking at, so resolve the click point again.
+      const target = pickNode && pickNode.isConnected ? pickNode : sectionAt(e.clientX, e.clientY);
+      if (!target) return;
       e.preventDefault(); e.stopPropagation();
-      const sel = describe(pickNode);
+      const sel = describe(target);
       stopPick();
-      post("/request", { type: "vary", params: { count: 4, selection: sel, hint: sel.text.slice(0, 40) } })
+      const gist = sel.heading || sel.text || (sel.media && sel.media[0]) || "";
+      post("/request", { type: "vary", params: {
+        count: 4,
+        selection: sel,
+        hint: gist.slice(0, 40) || undefined,
+        // A pick inside an open set's marker is that set, exactly: scoping
+        // the ask lets the label, the pending chip and the agent all say so.
+        set: sel.set || undefined,
+      } })
         .then(() => note(agentHere()
           ? "asked for 4 takes \u00b7 your agent is on it"
           : "asked for 4 takes \u00b7 send your agent any message and it picks this up", { ms: 6000 }))
-        .catch(() => note(`say: variate the section that starts "${sel.text.slice(0, 30)}"`,
-          { copy: `variate the section that starts "${sel.text.slice(0, 60)}"`, sticky: true }));
+        .catch(() => note(`say: variate the section that starts "${gist.slice(0, 30)}"`,
+          { copy: `variate the ${sel.place ?? "section"} that starts "${gist.slice(0, 60)}"`, sticky: true }));
     };
     addEventListener("pointermove", pickMove, true);
     addEventListener("click", pickClick, true);
