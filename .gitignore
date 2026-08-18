@@ -1,3 +1,5 @@
 node_modules/
 .DS_Store
 .vercel
+docs/inter.woff2
+docs/OFL.txt

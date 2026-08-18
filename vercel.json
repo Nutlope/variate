@@ -2,17 +2,27 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "outputDirectory": "docs",
   "framework": null,
-  "buildCommand": null,
+  "buildCommand": "cp client/inter/inter.woff2 docs/inter.woff2 && cp client/inter/OFL.txt docs/OFL.txt",
   "installCommand": null,
   "cleanUrls": true,
   "headers": [
     {
       "source": "/inter.woff2",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
     },
     {
       "source": "/img/(.*)",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
     }
   ]
 }

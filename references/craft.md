@@ -77,6 +77,8 @@ sentence.
   real file (`.dropped/` keeps the narrowed-away ones): never blend two
   directions, because the average is the middle neither of them wanted. Name
   the donors in the merge's `angle`.
+- Small edits to a winner (a word, a spacing value) are ordinary edits to the
+  live file; a round is for a question with more than one defensible answer.
 - "Like 3 but calmer" is a steer, below.
 - **A passed-over direction stays dead.** The board remembers what each round
   turned down (`variate status` lists it); offering it again two rounds later
