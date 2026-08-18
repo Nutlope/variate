@@ -128,8 +128,9 @@ URL is a first-class flow.
 2. **Resolve the target**: one file. A card pick attaches a `selection`;
    read it top down and stop at the first hit: `set` (the click landed in an
    open set's marker, so that set's target is the file; extend or narrow it,
-   never a second set), `src` (a dev-build file and line; confirm with one
-   read, then trust it), `id`, `cls` and the data or aria handles in `chain`
+   never a second set), `src` (a dev-build file and line, relative and
+   inside the project; confirm with one read, then trust it), `id`, `cls`
+   and the data or aria handles in `chain`
    (grep them literally), `url.path` (scope the search to that route's
    files), `heading`, then `text` (grep the words a user would see).
    `place` says what it looked like (sidebar, hero, header, footer); `media`

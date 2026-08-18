@@ -233,6 +233,9 @@ async function cmdUp() {
   }
 
   const ig = ignoreLine(P.ROOT, ".variate/");
+  // Remember that WE created the file, so end can take the whole file back
+  // out; a .gitignore the user wrote is never deleted, only edited.
+  if (ig.created) atomicWrite(path.join(P.STATE, "gitignore-created"), "1\n");
   const st = await get(port, "/health");
   const sets = listSets(P);
 
@@ -493,7 +496,7 @@ async function cmdEnd() {
   const led = readJsonSafe(P.ATTACH);
   const server = readJsonSafe(P.SERVER_JSON);
   const d = detach(P.ROOT, P.ATTACH);
-  unignoreLine(P.ROOT, ".variate/");
+  unignoreLine(P.ROOT, ".variate/", fs.existsSync(path.join(P.STATE, "gitignore-created")));
 
   // Stop the sidecar too: end means gone, with nothing for anyone to pkill.
   // Ask it to shut down over HTTP first, so an open card hears the empty

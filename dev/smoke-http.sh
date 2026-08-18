@@ -154,11 +154,14 @@ set -e
 
 echo "-- a pick's selection reaches the agent, named and placed"
 curl -s -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
-  -d '{"type":"vary","params":{"count":4,"selection":{"v":2,"heading":"Getting started","place":"sidebar","tag":"div"}}}' "$B/request" \
+  -d '{"type":"vary","params":{"count":4,"selection":{"v":2,"heading":"Getting started","place":"sidebar","tag":"div","src":"../../../../etc/passwd:1:1"}}}' "$B/request" \
   | J 'j.label' | grep -qx '4 takes of "Getting started" (sidebar)'
 ls "$WS/.variate/requests" | grep -q 'vary-getting-started.json'
 OUT=$(node "$V" drain --root "$WS")
 echo "$OUT" | J 'j[0].params.selection.place' | grep -qx sidebar
+# a src that is absolute or traverses is dropped: the agent only ever gets
+# a relative, in-project path to confirm
+echo "$OUT" | J 'String(j[0].params.selection.src)' | grep -qx undefined
 set +e; node "$V" drain --root "$WS" --ack "$(echo "$OUT" | J 'j[0].id')" > /dev/null; set -e
 
 echo "-- dotfiles and out-of-root symlinks are never served"

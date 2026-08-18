@@ -38,6 +38,9 @@ function cleanSelection(sel) {
     const s = capStr(sel[k], max);
     if (s) out[k] = s;
   }
+  // src names a file the agent will read: keep it relative and inside the
+  // project shape, never absolute, never traversing.
+  if (out.src && (out.src.startsWith("/") || out.src.startsWith("\\") || out.src.includes(".."))) delete out.src;
   const chain = capList(sel.chain, 6, 80);
   if (chain) out.chain = chain;
   const media = capList(sel.media, 2, 80);

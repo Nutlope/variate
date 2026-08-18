@@ -191,14 +191,15 @@ export function ignoreLine(root, line) {
   return { added: true };
 }
 
-export function unignoreLine(root, line) {
+export function unignoreLine(root, line, removeFileIfEmpty = false) {
   const gi = path.join(root, ".gitignore");
   const src = readSafe(gi);
   if (src == null) return { skipped: true };
   const kept = src.split("\n").filter((l) => l.trim() !== line);
-  // A file that held nothing but variate's own line goes back out with it,
-  // so end leaves the tree exactly as it was found.
-  if (kept.every((l) => !l.trim())) {
+  // A file variate itself created (the caller knows, via the marker) goes
+  // back out with its line, so end leaves the tree exactly as it was found.
+  // A file the USER wrote is never deleted, however empty it ends up.
+  if (removeFileIfEmpty && kept.every((l) => !l.trim())) {
     try { fs.rmSync(gi, { force: true }); } catch { /* fine */ }
     return { removed: true, file: true };
   }

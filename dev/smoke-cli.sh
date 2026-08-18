@@ -405,6 +405,17 @@ node "$V" end --root "$GI" > /dev/null
 test ! -f "$GI/.gitignore"
 test -z "$(cd "$GI" && git status --porcelain)"
 pkill -f "sidecar.mjs --root $GI" 2>/dev/null || true
+# ...but a .gitignore the USER wrote is edited, never deleted, even when
+# removing our line leaves it empty
+GJ=$(mktemp -d)/gj
+mkdir -p "$GJ"; cp fixtures/static/index.html "$GJ/"
+printf '.variate/\n' > "$GJ/.gitignore"
+(cd "$GJ" && git init -q . && git add -A && git -c user.email=t@t -c user.name=t commit -qm base)
+node "$V" up --root "$GJ" --port $((PORT + 27)) > /dev/null
+node "$V" add "$GJ/index.html" --name page --root "$GJ" > /dev/null
+node "$V" end --root "$GJ" > /dev/null
+test -f "$GJ/.gitignore"
+pkill -f "sidecar.mjs --root $GJ" 2>/dev/null || true
 
 echo "-- a filename full of regex metachars still adds cleanly"
 RX=$(mktemp -d)/rx
