@@ -13,13 +13,13 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import {
   paths, listSets, setSummary, switchTo, readSet, atomicWrite, readSafe,
-  readBytes, statMtimeSafe, defaultPortFor, nowIso,
+  readBytes, statMtimeSafe, defaultPortFor, nowIso, VERSION,
 } from "./core.mjs";
 import { createRequest, queueState, TYPES } from "./queue.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.join(HERE, "..", "client");
-export const VERSION = "3.2.0";
+export { VERSION };
 
 // ---------------------------------------------------------------------------
 // guards

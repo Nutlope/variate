@@ -147,4 +147,9 @@ grep -q '__vueParentComponent' "$C"
 echo "-- a click on a stale hover node re-resolves rather than lying"
 grep -q 'pickNode.isConnected' "$C"
 
+echo "-- the card ducks on screens that do not render the active set"
+grep -q 'data-away' "$C"
+grep -q 'awayTick' "$C"
+grep -q 'clearInterval(awayTick)' "$C"
+
 echo "smoke-card PASS"

@@ -30,8 +30,78 @@ const importsOf = (src) => {
   return out;
 };
 
-const bare = (spec) => !spec.startsWith(".") && !spec.startsWith("/") && !spec.startsWith("@/") && !spec.startsWith("~");
+// "$lib" (SvelteKit) and "#app" (Node subpath imports) are aliases, not
+// packages: calling them bare produced a confident, wrong "not in
+// package.json" warning.
+const bare = (spec) => !spec.startsWith(".") && !spec.startsWith("/") && !spec.startsWith("@/") && !spec.startsWith("~") && !spec.startsWith("$") && !spec.startsWith("#");
 const pkgName = (spec) => (spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0]);
+
+// tsconfig/jsconfig "paths" make specs like "@/components/Button" checkable.
+// JSONC-tolerant: comments and trailing commas are stripped before parsing,
+// and any failure just means no alias checking, never a crash.
+function readJsonc(file) {
+  const raw = readSafe(file);
+  if (raw == null) return null;
+  try {
+    const clean = raw
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:"'])\/\/[^\n]*/g, "$1")
+      .replace(/,\s*([}\]])/g, "$1");
+    return JSON.parse(clean);
+  } catch { return null; }
+}
+
+/**
+ * The nearest tsconfig.json or jsconfig.json walking up from the target to
+ * the project root, following one relative "extends" hop when the found file
+ * has no paths of its own (the SvelteKit shape: the root tsconfig extends
+ * .svelte-kit/tsconfig.json, which is where the paths live). Returns a
+ * resolver from spec to candidate absolute paths, or null.
+ */
+export function aliasResolverFor(P, targetDir) {
+  let dir = targetDir, found = null;
+  while (true) {
+    for (const name of ["tsconfig.json", "jsconfig.json"]) {
+      const file = path.join(dir, name);
+      if (fs.existsSync(file)) { found = file; break; }
+    }
+    if (found || dir === P.ROOT) break;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  if (!found) return null;
+  let json = readJsonc(found);
+  let configDir = path.dirname(found);
+  if (json && !json.compilerOptions?.paths && typeof json.extends === "string" && json.extends.startsWith(".")) {
+    const ext = path.resolve(configDir, json.extends);
+    const extFile = ext.endsWith(".json") ? ext : ext + ".json";
+    const parent = readJsonc(extFile);
+    if (parent?.compilerOptions?.paths) { json = parent; configDir = path.dirname(extFile); }
+  }
+  const co = json?.compilerOptions;
+  if (!co?.paths || typeof co.paths !== "object") return null;
+  const baseDir = path.resolve(configDir, typeof co.baseUrl === "string" ? co.baseUrl : ".");
+  const entries = Object.entries(co.paths).filter(([, v]) => Array.isArray(v) && v.length);
+  if (!entries.length) return null;
+  return (spec) => {
+    let best = null, bestLen = -1;
+    for (const [key, targets] of entries) {
+      const star = key.indexOf("*");
+      if (star === -1) {
+        if (spec === key && key.length > bestLen) { best = { targets, part: null }; bestLen = key.length; }
+      } else {
+        const pre = key.slice(0, star), suf = key.slice(star + 1);
+        if (spec.startsWith(pre) && spec.endsWith(suf) && spec.length >= pre.length + suf.length && pre.length > bestLen) {
+          best = { targets, part: spec.slice(pre.length, spec.length - suf.length) };
+          bestLen = pre.length;
+        }
+      }
+    }
+    if (!best) return null;
+    return best.targets.map((t) => path.resolve(baseDir, best.part == null ? String(t) : String(t).replace("*", best.part)));
+  };
+}
 
 /**
  * The round itself, checked before the variants.
@@ -62,7 +132,7 @@ export function checkPlan(set) {
   return out;
 }
 
-export function checkVariant(P, set, variant, baselineSrc, deps) {
+export function checkVariant(P, set, variant, baselineSrc, deps, resolveAlias = null) {
   const src = readSafe(variant.file);
   const w = [];
   if (src == null) return { n: variant.n, warnings: ["unreadable"] };
@@ -96,17 +166,30 @@ export function checkVariant(P, set, variant, baselineSrc, deps) {
     const dir = path.dirname(set.target);
     const exts = ["", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".vue", ".svelte", ".astro", ".css", "/index.js", "/index.jsx", "/index.ts", "/index.tsx"];
     for (const spec of importsOf(src)) {
+      if (spec.startsWith(".")) {
+        const base = path.resolve(dir, spec);
+        if (!exts.some((e) => fs.existsSync(base + e))) {
+          w.push(`imports "${spec}", which does not resolve from ${path.relative(P.ROOT, dir) || "."}`);
+        }
+        continue;
+      }
+      // Aliases before packages: "@/x" through tsconfig paths is the most
+      // common import in a Next app, and skipping it was this linter's
+      // biggest blind spot.
+      const cands = resolveAlias ? resolveAlias(spec) : null;
+      if (cands) {
+        if (!cands.some((base) => exts.some((e) => fs.existsSync(base + e)))) {
+          w.push(`imports "${spec}", which does not resolve through tsconfig paths`);
+        }
+        continue;
+      }
       if (bare(spec)) {
         if (!deps) continue;
         const p = pkgName(spec);
         if (!deps.has(p) && !p.startsWith("node:")) w.push(`imports "${p}", which is not in package.json`);
-        continue;
       }
-      if (!spec.startsWith(".")) continue; // an alias like @/ or ~; we cannot resolve it here
-      const base = path.resolve(dir, spec);
-      if (!exts.some((e) => fs.existsSync(base + e))) {
-        w.push(`imports "${spec}", which does not resolve from ${path.relative(P.ROOT, dir) || "."}`);
-      }
+      // An alias with no matching paths entry stays silent: webpack and vite
+      // aliases live outside tsconfig, and a guess here would cry wolf.
     }
   }
 
@@ -192,8 +275,9 @@ export function checkSet(P, set) {
     } catch { /* no dep check */ }
   }
   const parser = parserFor(P);
+  const resolveAlias = aliasResolverFor(P, path.dirname(set.target));
   return set.variants.filter((v) => v.n !== 1).map((v) => {
-    const row = checkVariant(P, set, v, baselineSrc, deps);
+    const row = checkVariant(P, set, v, baselineSrc, deps, resolveAlias);
     if (parser) {
       const err = parseWith(parser, v.file, set.ext);
       if (err) row.warnings.unshift(`does not parse: ${err}`);

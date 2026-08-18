@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Install variate as a skill for whichever agents are on this machine.
 //
-//   node scripts/install.mjs [--dry-run] [--remove] [--copy] [--claude] [--codex] [--opencode]
+//   node scripts/install.mjs [--dry-run] [--remove] [--copy]
+//                            [--claude] [--codex] [--cursor] [--agents] [--opencode]
 //   node scripts/install.mjs --hooks [--dry-run] [--remove]
 //
 // With no target flags it installs everywhere it finds a home. A symlink is
@@ -34,11 +35,15 @@ const HOME = os.homedir();
 const args = {};
 for (const a of process.argv.slice(2)) if (a.startsWith("--")) args[a.slice(2)] = true;
 
-// Where each agent looks. All three read the same open skill format; each
+// Where each agent looks. All of them read the same open skill format; each
 // gets its own link, so removing one agent's install never breaks another.
+// ~/.agents/skills is the shared store several agents (and the npx skills
+// CLI) read; Codex's own global home is ~/.codex/skills.
 const TARGETS = [
   { key: "claude", label: "Claude Code", dir: path.join(HOME, ".claude", "skills", "variate") },
-  { key: "codex", label: "Codex CLI", dir: path.join(HOME, ".agents", "skills", "variate") },
+  { key: "codex", label: "Codex CLI", dir: path.join(HOME, ".codex", "skills", "variate") },
+  { key: "cursor", label: "Cursor", dir: path.join(HOME, ".cursor", "skills", "variate") },
+  { key: "agents", label: "shared store", dir: path.join(HOME, ".agents", "skills", "variate") },
   { key: "opencode", label: "opencode", dir: path.join(HOME, ".config", "opencode", "skills", "variate") },
 ];
 

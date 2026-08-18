@@ -413,4 +413,25 @@ printf '<h1>weird</h1>\n' > "$RX/Hero (v2)+final.html"
 node "$V" add "$RX/Hero (v2)+final.html" --root "$RX" > /dev/null
 node "$V" status --root "$RX" --json | J 'j.sets.length' | grep -qx 1
 
+echo "-- alias imports resolve through jsconfig paths, and broken ones warn"
+printf '{"compilerOptions":{"baseUrl":".","paths":{"@/*":["src/*"]}}}\n' > "$CODE/jsconfig.json"
+printf 'import { Button } from "@/components/Button";\nexport function Hero(){ return <div data-variate-section="hero"><Button/></div> }\n' > "$CODE/.variate/hero/5.jsx"
+node "$V" check hero --root "$CODE" | grep -q 'does not resolve through' && exit 1
+printf 'import { Nope } from "@/components/Nope";\nexport function Hero(){ return <div data-variate-section="hero">x</div> }\n' > "$CODE/.variate/hero/6.jsx"
+node "$V" check hero --root "$CODE" | grep -q 'does not resolve through tsconfig paths'
+# a SvelteKit-style alias is an alias, never a package.json complaint
+printf 'import { t } from "$lib/i18n";\nexport function Hero(){ return t }\n' > "$CODE/.variate/hero/7.jsx"
+node "$V" check hero --root "$CODE" | grep -q '"\$lib", which is not in package.json' && exit 1
+
+echo "-- a malformed tsconfig never crashes the check"
+printf '{ this is not json /* at all */ ,}\n' > "$CODE/jsconfig.json"
+node "$V" check hero --root "$CODE" > /dev/null
+rm "$CODE/jsconfig.json" "$CODE/.variate/hero/5.jsx" "$CODE/.variate/hero/6.jsx" "$CODE/.variate/hero/7.jsx"
+
+echo "-- the version is single sourced, and SKILL.md agrees"
+CODE_V=$(node -e "import('./src/core.mjs').then(m=>console.log(m.VERSION))")
+SKILL_V=$(sed -n 's/.*version: "\([0-9.]*\)".*/\1/p' SKILL.md)
+test -n "$CODE_V"
+test "$CODE_V" = "$SKILL_V"
+
 echo "smoke-cli PASS"

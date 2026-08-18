@@ -10,6 +10,10 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 
+// The one copy of the version. SKILL.md's frontmatter states it too (a skill
+// file cannot import), and smoke-cli trips when the two drift.
+export const VERSION = "3.2.0";
+
 export const sha = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
 export const nowIso = () => new Date().toISOString();
 

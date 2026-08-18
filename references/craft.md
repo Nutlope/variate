@@ -68,7 +68,9 @@ sentence.
 
 ## Applying a verdict
 
-- A plain pick: they are already on it. Nothing to do but log it.
+- A plain verdict: they are already on the one they want. Nothing to do but
+  log it. ("Pick" belongs to the card's pick button, which starts a round on
+  a clicked section; do not reuse the word for choosing a position.)
 - **Compositional feedback is the best kind**: "2's layout with 4's stat strip"
   IS the design. Draw the merge as the next position rather than asking them to
   choose again. Each part comes from exactly one donor, whole, lifted from its

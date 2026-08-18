@@ -22,14 +22,13 @@ import { fileURLToPath } from "node:url";
 import {
   paths, listSets, readSet, switchTo, narrowTo, slug, defaultPortFor,
   readSafe, readJsonSafe, atomicWrite, readBoard, recordSettled, stripMarker,
-  escapeRe,
+  escapeRe, VERSION,
 } from "./src/core.mjs";
 import { detect, attach, detach, isAttached, ignoreLine, unignoreLine } from "./src/attach.mjs";
 import { checkSet, checkPlan, parserFor } from "./src/check.mjs";
 import { queueState } from "./src/queue.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const VERSION = "3.2.0";
 
 // ---------------------------------------------------------------------------
 // args

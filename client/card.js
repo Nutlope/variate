@@ -66,6 +66,7 @@
   padding-bottom: 0; padding-top: calc(16px + env(safe-area-inset-top));
 }
 :host([data-top]) .wrap[data-collapsed]{ transform: translateY(calc(-100% + 3px)) }
+:host([data-top]) .wrap[data-away]:not(:hover):not(:focus-within){ transform: translateY(calc(-100% + 3px)) }
 :host([data-top]) .wrap[data-exit]{ transform: translateY(-130%) }
 :host([data-top]) .menu{ bottom: auto; top: calc(100% + 8px) }
 :host([data-top]) .tip{ bottom: auto; top: calc(100% + 7px) }
@@ -114,6 +115,10 @@
 @keyframes rise{ from{ transform: translateY(130%); opacity: 0 } }
 .wrap[data-quiet] .dock{ opacity: .42 }
 .wrap[data-collapsed]{ transform: translateY(calc(100% - 3px)) }
+/* Route-aware: the active set's marker is not in this screen's DOM, so the
+   card ducks to the same lip on its own. Unlike data-collapsed (the user's
+   explicit choice), approaching it brings it straight back. */
+.wrap[data-away]:not(:hover):not(:focus-within){ transform: translateY(calc(100% - 3px)) }
 .wrap[data-picking] .dock{ opacity: 0; pointer-events: none }
 .wrap[data-exit]{ transform: translateY(130%); opacity: 0 }
 .wrap[data-kept] .pager{ opacity: .45; pointer-events: none }
@@ -1022,6 +1027,7 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
       offline, picking, askOpen, exiting, state?.agent,
       s ? tailState(s) : null,
       s ? (keptFor(s)?.n ?? false) : false,
+      s ? markerSeen.has(s.name) && !markerFor(s.name) : false,
       ask ? `${ask.id}:${ask.bucket}` : null,
       (state?.working || []).length, (state?.queued || []).length,
     ]);
@@ -1052,6 +1058,13 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
     const kept = keptFor(s);
     const locked = !!kept;
     wrap.toggleAttribute("data-kept", locked);
+
+    // Route-aware duck: a set that tags itself, currently rendered on some
+    // OTHER screen of the app, does not need the full card on this one. The
+    // markerSeen gate keeps this honest the same way the "not on this
+    // screen" note is kept honest, so CSS and theme sets never duck.
+    const away = !picking && !askOpen && !locked && markerSeen.has(s.name) && !markerFor(s.name);
+    wrap.toggleAttribute("data-away", away);
 
     refs.nameBtn.textContent = s.name;
     refs.nameBtn.disabled = false;
@@ -1661,6 +1674,10 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
 
   if (placed === "top") host.setAttribute("data-top", "");
   setCollapsed(collapsed);
+  // A client-side route change swaps the DOM without touching variate state,
+  // so no SSE event arrives to say the marker left the screen. A cheap look
+  // every 1.5s keeps the away duck honest; same-signature renders no-op.
+  const awayTick = setInterval(() => { if ((state?.sets || []).length) render(); }, 1500);
   dock.setAttribute("data-enter", "");
   setTimeout(() => dock.removeAttribute("data-enter"), 900);
   connect();
@@ -1680,6 +1697,7 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
     go, step, note, keep,
     destroy() {
       try { es?.close(); } catch (_) {}
+      clearInterval(awayTick);
       removeEventListener("keydown", onKey, true);
       removeEventListener("scroll", onScroll);
       removeEventListener("pointerdown", onDocDown, true);

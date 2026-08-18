@@ -30,8 +30,8 @@ anything.
 it cannot be switched off by a harness. Everything below only shortens the
 wait.
 
-**The hooks in SKILL.md's frontmatter do fire.** Measured on 2.1.223: invoking
-the skill and letting the turn end arms the 15 minute watcher, and
+**The hooks in SKILL.md's frontmatter do fire.** Verified in practice:
+invoking the skill and letting the turn end arms the 15 minute watcher, and
 `.variate/state/wake.lock` names a live process. `hooks` is a recognised
 skill-frontmatter field, and once the watcher is armed it is an ordinary
 background process that outlives the turn that started it. So a user who
@@ -73,7 +73,10 @@ or a big file; for three short files, writing them yourself is faster.
 
 ## Codex CLI
 
-Install puts variate at `~/.agents/skills/variate`. The things that differ:
+Install links variate at `~/.codex/skills/variate` (Codex's global skills
+home) and at the shared `~/.agents/skills/variate`, which Codex also reads
+per project. `agents/openai.yaml` in the skill directory is Codex's optional
+display metadata; leave it in place. The things that differ:
 
 - **The sandbox may refuse to keep a background process alive or to bind a
   port.** `variate up` handles this: it prints what is unavailable and exits
