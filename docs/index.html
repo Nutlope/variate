@@ -86,7 +86,7 @@
   .demo{ padding: 84px 0 96px }
   .demo .col{ max-width: 1060px }
   .shots{
-    position: relative; aspect-ratio: 16 / 10;
+    position: relative; aspect-ratio: 1560 / 840;
     border-radius: 14px; overflow: hidden;
     box-shadow: 0 0 0 1px var(--line), 0 24px 64px -32px var(--shadow-deep);
   }
@@ -288,10 +288,10 @@
   <div class="col">
     <figure>
       <div class="shots">
-        <img src="img/state-1.webp" alt="A ceramics studio page with its original hero, the variate card docked at the bottom on position 1, named: as it was" width="1440" height="900" data-n="1">
-        <img src="img/state-2.webp" alt="The same page, hero redrawn as ruled ledger lines, the card on position 2, named: the ledger" width="1440" height="900" data-n="2" data-on>
-        <img src="img/state-3.webp" alt="The same page, hero split into two columns beside a kiln photo panel, the card on position 3, named: split" width="1440" height="900" data-n="3">
-        <img src="img/state-4.webp" alt="The same page, hero led by five pot silhouettes on a shelf, the card on position 4, named: the shelf" width="1440" height="900" data-n="4">
+        <img src="img/state-1.webp" alt="A SaaS analytics landing page with its original indigo hero, the variate card docked at the bottom on position 1, named: as it was" width="1560" height="840" data-n="1">
+        <img src="img/state-2.webp" alt="The same page, hero gone dark with a chartreuse accent and a glowing chart, the card on position 2, named: night shift" width="1560" height="840" data-n="2" data-on>
+        <img src="img/state-3.webp" alt="The same page, hero reset in serif on paper with a pull quote and a stats rule, the card on position 3, named: editorial" width="1560" height="840" data-n="3">
+        <img src="img/state-4.webp" alt="The same page, copy on the left and the product panel bleeding off the right edge, the card on position 4, named: the split" width="1560" height="840" data-n="4">
       </div>
       <figcaption>
         <span>Flipping writes the real file. Vite re-renders it in under 150ms, Next in 200-400ms.</span>
@@ -402,7 +402,7 @@
 
 <script>
   // The demo dock: flips the screenshot the way the real card flips your page.
-  const names = { 1: "as it was", 2: "the ledger", 3: "split", 4: "the shelf" };
+  const names = { 1: "as it was", 2: "night shift", 3: "editorial", 4: "the split" };
   const dock = document.getElementById("dock");
   const hint = document.getElementById("hint");
   const shots = [...document.querySelectorAll(".shots img")];
