@@ -283,9 +283,9 @@
     <p class="tag">Four real versions of one file, on the localhost you are
     already looking at. <em>Your agent writes them. Arrow keys flip them. The
     one you keep is the code.</em></p>
-    <div class="cmd herocmd"><span class="x">npx</span> skills add Luffixos/variate<button class="copy" type="button" aria-label="copy command"><svg class="ic-copy" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3.5 10.5h-.5a1.5 1.5 0 0 1-1.5-1.5V4a1.5 1.5 0 0 1 1.5-1.5H8A1.5 1.5 0 0 1 9.5 4v.5"/></svg><svg class="ic-check" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg></button></div>
+    <div class="cmd herocmd"><span class="x">npx</span> skills add Nutlope/variate<button class="copy" type="button" aria-label="copy command"><svg class="ic-copy" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3.5 10.5h-.5a1.5 1.5 0 0 1-1.5-1.5V4a1.5 1.5 0 0 1 1.5-1.5H8A1.5 1.5 0 0 1 9.5 4v.5"/></svg><svg class="ic-check" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg></button></div>
     <nav class="mastlinks" aria-label="primary">
-      <a href="https://github.com/Luffixos/variate">GitHub</a>
+      <a href="https://github.com/Nutlope/variate">GitHub</a>
       <a href="#install">Install</a>
     </nav>
   </div>
@@ -376,7 +376,7 @@
     <h2>One command.</h2>
     <p class="sub">Then ask your agent for four takes.</p>
     <div class="installrow">
-    <div class="cmd"><span class="x">npx</span> skills add Luffixos/variate<button class="copy" type="button" aria-label="copy command"><svg class="ic-copy" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3.5 10.5h-.5a1.5 1.5 0 0 1-1.5-1.5V4a1.5 1.5 0 0 1 1.5-1.5H8A1.5 1.5 0 0 1 9.5 4v.5"/></svg><svg class="ic-check" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg></button></div>
+    <div class="cmd"><span class="x">npx</span> skills add Nutlope/variate<button class="copy" type="button" aria-label="copy command"><svg class="ic-copy" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3.5 10.5h-.5a1.5 1.5 0 0 1-1.5-1.5V4a1.5 1.5 0 0 1 1.5-1.5H8A1.5 1.5 0 0 1 9.5 4v.5"/></svg><svg class="ic-check" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg></button></div>
     <button class="agentbtn" id="agentbtn" type="button"><svg class="ic-copy" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3.5 10.5h-.5a1.5 1.5 0 0 1-1.5-1.5V4a1.5 1.5 0 0 1 1.5-1.5H8A1.5 1.5 0 0 1 9.5 4v.5"/></svg><svg class="ic-check" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg><span>or copy a prompt for your agent</span></button>
     </div>
     <p class="note">Works with <span class="k">Claude Code</span>,
@@ -512,7 +512,7 @@
   // only says copied when the clipboard really took it.
   const agentbtn = document.getElementById("agentbtn");
   const agentlabel = agentbtn.querySelector("span");
-  const agentPrompt = 'Install the variate skill: run "npx skills add Luffixos/variate". If npx is not available, git clone https://github.com/Luffixos/variate and run "node variate/scripts/install.mjs". Tell me when it is ready.';
+  const agentPrompt = 'Install the variate skill: run "npx skills add Nutlope/variate". If npx is not available, git clone https://github.com/Nutlope/variate and run "node variate/scripts/install.mjs". Tell me when it is ready.';
   agentbtn.addEventListener("click", () => {
     navigator.clipboard.writeText(agentPrompt).then(() => {
       agentbtn.setAttribute("data-done", "");

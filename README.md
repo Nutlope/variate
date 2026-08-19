@@ -20,11 +20,11 @@
 
 ## Cloning & running
 
-1. Install the skill: `npx skills add Luffixos/variate`
+1. Install the skill: `npx skills add Nutlope/variate`
 2. Or clone once and link every agent on the machine (`git pull` then updates them all):
 
    ```bash
-   git clone https://github.com/Luffixos/variate ~/code/variate
+   git clone https://github.com/Nutlope/variate ~/code/variate
    node ~/code/variate/scripts/install.mjs
    ```
 
