@@ -111,7 +111,7 @@
   .steps .n{ color: var(--dim); font: 400 12px/1 var(--mono); font-variant-numeric: tabular-nums }
   .steps p{ color: var(--dim); font-size: 14.5px; max-width: 44em }
   .steps p + p{ margin-top: 8px }
-  .steps .k, .why .k{ color: var(--fg) }
+  .steps .k{ color: var(--fg) }
   .steps img{
     display: block; width: 100%; max-width: 520px; height: auto;
     margin-top: 16px; border-radius: 10px; box-shadow: 0 0 0 1px var(--line);
@@ -124,29 +124,6 @@
     color: var(--fg); font: 400 12px/1.6 var(--mono);
     font-variant-ligatures: none; white-space: nowrap;
   }
-
-  /* why: one decision, and the pile of machinery it removes. The strike is
-     the argument, so it is the one place the accent is spent here. */
-  .why{ padding: 84px 0 96px }
-  /* Even rows rather than a greedy wrap, so the last term never sits alone
-     looking like an afterthought. auto-fit with a min of min(100%, ...)
-     drops to one column before it can ever overflow a phone. */
-  .gone{
-    list-style: none; padding: 0;
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr));
-    gap: 16px 24px; margin: 0 0 40px;
-  }
-  .gone li{ font-size: clamp(15px, 1.7vw, 18px); color: var(--dim) }
-  .gone li span{ position: relative; white-space: nowrap }
-  /* The strike is not decoration, it is the sentence: these things do not
-     exist. So it is drawn outright and never animated in. A scroll-driven
-     draw looked lovely and failed to the wrong state, leaving six ordinary
-     words that read as a feature list saying the opposite. */
-  .gone li span::after{
-    content: ""; position: absolute; left: -3px; right: -3px; top: 52%;
-    height: 1.5px; border-radius: 2px; background: var(--accent);
-  }
-  .then{ color: var(--dim); font-size: 14px; max-width: 46em }
 
   /* install */
   .install{ padding: 84px 0 96px }
@@ -165,18 +142,16 @@
     box-shadow: inset 0 0 0 1px var(--line);
     overflow-x: auto; white-space: pre;
   }
-  .cmd + .cmd{ margin-top: 8px }
-  /* Three roles, no more: what you run, what it acts on, and the one flag
-     that makes the second block different from the first. */
-  .cmd .c{ color: var(--dim) }         /* a comment, and never copied */
   .cmd .x{ color: var(--fg); font-weight: 500 }   /* the program */
-  .cmd .f{ color: var(--accent) }      /* a flag */
   .copy{
-    all: unset; box-sizing: border-box; position: absolute; top: 8px; right: 8px;
+    all: unset; box-sizing: border-box; position: absolute; right: 8px;
+    /* Centered on the block's true middle; translate stays out of the way of
+       the global :active transform. */
+    top: 50%; translate: 0 -50%;
     color: var(--dim);
     padding: 8px; border-radius: 8px; cursor: pointer;
     background: var(--panel);
-    box-shadow: inset 0 0 0 1px var(--line);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.07);
     transition: color .18s var(--ease);
   }
   .copy:hover{ color: var(--fg) }
@@ -186,6 +161,23 @@
   .copy[data-done] .ic-copy{ display: none }
   .copy[data-done] .ic-check{ display: block }
   .herocmd{ margin-top: 32px; max-width: 400px }
+  /* The second path: one button that copies a ready prompt, because the
+     other install route runs through an agent anyway. */
+  .agentbtn{
+    all: unset; box-sizing: border-box; margin-top: 8px;
+    display: inline-flex; align-items: center; gap: 8px;
+    font: 400 13px/1 var(--sans); color: var(--ink-2);
+    padding: 12px 16px; border-radius: 10px; cursor: pointer;
+    background: var(--raise);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.07);
+    transition: color .18s var(--ease), background .18s var(--ease);
+  }
+  .agentbtn:hover{ color: var(--fg); background: var(--hover) }
+  .agentbtn[data-done]{ color: var(--accent) }
+  .agentbtn svg{ display: block }
+  .agentbtn .ic-check{ display: none }
+  .agentbtn[data-done] .ic-copy{ display: none }
+  .agentbtn[data-done] .ic-check{ display: block }
   .install .note{ color: var(--dim); font-size: 14px; margin-top: 24px; max-width: 46em }
   .install .note .k{ color: var(--fg) }
 
@@ -255,7 +247,7 @@
 
   @media (max-width: 640px){
     .mast{ padding: 72px 0 60px }
-    .demo, .round, .why, .install{ padding: 64px 0 72px }
+    .demo, .round, .install{ padding: 64px 0 72px }
     .steps li{ grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 24px 0 }
     .demo .col{ max-width: none }
     .dock .dname, .dock .dname + .dsep{ display: none }
@@ -313,8 +305,8 @@
         <div class="lead"><span class="n">01</span><h3>Ask</h3></div>
         <div>
           <p class="cmd">/variate four takes on the hero</p>
-          <p>Four real versions of that one file. Your stack, your tokens,
-          your words. Nothing gets added to your project.</p>
+          <p>Four real versions of that one file. Your stack, your design
+          tokens, your words. Nothing gets added to your project.</p>
         </div>
       </li>
 
@@ -322,9 +314,9 @@
         <div class="lead"><span class="n">02</span><h3>Flip</h3></div>
         <div>
           <p><span class="key">&larr;</span><span class="key">&rarr;</span>
-          and the page really changes. Each one has a name and tells you
-          <span class="k">what it costs</span>, so you read the tradeoff
-          exactly where you decide.</p>
+          and the page really changes. Each version has a name and
+          <span class="k">names its tradeoff</span>, so you know what you
+          are giving up before you choose.</p>
           <img src="img/menu.webp" alt="The card's menu, open: the question, what should the hero lead with, and four named versions each listing its cost" width="1949" height="1020">
         </div>
       </li>
@@ -353,7 +345,9 @@
         <div class="lead"><span class="n">05</span><h3>Point</h3></div>
         <div>
           <p>Click any part of your page to start the next round there. The
-          page is only ever measured, never touched.</p>
+          card tells your agent exactly what you clicked (the section, its
+          heading, the route it lives on), so the ask lands on the right
+          file. Sidebars, headers, and icon rows included.</p>
           <img src="img/pick.webp" alt="Pick mode: a violet highlight and section tag over the features grid of the page" width="2880" height="1800">
         </div>
       </li>
@@ -362,41 +356,17 @@
   </div>
 </section>
 
-<section class="why" aria-label="why it is built this way">
-  <div class="col">
-    <h2>The flip writes your real file.</h2>
-    <p class="sub">So none of this exists:</p>
-    <ul class="gone">
-      <li><span>preview server</span></li>
-      <li><span>iframe</span></li>
-      <li><span>wrapper component</span></li>
-      <li><span>build step</span></li>
-      <li><span>hydration risk</span></li>
-      <li><span>apply step</span></li>
-    </ul>
-    <p class="then">A version is just a file: a .tsx on Next, a .vue, a
-    .svelte, an .erb, a plain .html. Yours sits at position 1 and is never
-    edited. Edit the live file by hand and that gets kept too.</p>
-  </div>
-</section>
-
 <section class="install" id="install" aria-label="install">
   <div class="col">
     <h2>One command.</h2>
     <p class="sub">Then ask your agent for four takes.</p>
     <div class="cmd"><span class="x">npx</span> skills add Luffixos/variate<button class="copy" type="button" aria-label="copy command"><svg class="ic-copy" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3.5 10.5h-.5a1.5 1.5 0 0 1-1.5-1.5V4a1.5 1.5 0 0 1 1.5-1.5H8A1.5 1.5 0 0 1 9.5 4v.5"/></svg><svg class="ic-check" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg></button></div>
-    <div class="cmd"><span class="c"># no npx: one clone covers every agent on the machine, and git pull updates them all</span>
-<span class="x">git</span> clone https://github.com/Luffixos/variate ~/code/variate
-<span class="x">node</span> ~/code/variate/scripts/install.mjs<button class="copy" type="button" aria-label="copy command"><svg class="ic-copy" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3.5 10.5h-.5a1.5 1.5 0 0 1-1.5-1.5V4a1.5 1.5 0 0 1 1.5-1.5H8A1.5 1.5 0 0 1 9.5 4v.5"/></svg><svg class="ic-check" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg></button></div>
+    <button class="agentbtn" id="agentbtn" type="button"><svg class="ic-copy" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M3.5 10.5h-.5a1.5 1.5 0 0 1-1.5-1.5V4a1.5 1.5 0 0 1 1.5-1.5H8A1.5 1.5 0 0 1 9.5 4v.5"/></svg><svg class="ic-check" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.5 3.5L13 4.5"/></svg><span>or copy a prompt for your agent</span></button>
     <p class="note">Works with <span class="k">Claude Code</span>,
-    <span class="k">Codex CLI</span>, <span class="k">opencode</span>,
-    <span class="k">Cursor</span>, and anything else that can run a shell
-    command (AGENTS.md is the whole contract). The optional Claude Code
-    hooks, which let a card click reach an idle agent, are in the
-    <a href="https://github.com/Luffixos/variate">README</a>.</p>
-    <p class="note">Everything stays on <span class="k">127.0.0.1</span>: no
-    accounts, no telemetry, no network calls, and <span class="k">variate
-    end</span> leaves nothing behind but the design you chose.</p>
+    <span class="k">Codex CLI</span>, <span class="k">opencode</span>, and
+    <span class="k">Cursor</span>. Everything stays on
+    <span class="k">127.0.0.1</span>: no accounts, no telemetry, no network
+    calls.</p>
   </div>
 </section>
 
@@ -498,6 +468,23 @@
       setTimeout(() => { b.removeAttribute("data-done"); b.setAttribute("aria-label", "copy command"); }, 1400);
     }).catch(() => {});
   }));
+
+  // The agent button copies a paste-ready prompt rather than a command,
+  // for the reader whose terminal is an agent. Same honesty rule: the label
+  // only says copied when the clipboard really took it.
+  const agentbtn = document.getElementById("agentbtn");
+  const agentlabel = agentbtn.querySelector("span");
+  const agentPrompt = 'Install the variate skill: run "npx skills add Luffixos/variate". If npx is not available, git clone https://github.com/Luffixos/variate and run "node variate/scripts/install.mjs". Tell me when it is ready.';
+  agentbtn.addEventListener("click", () => {
+    navigator.clipboard.writeText(agentPrompt).then(() => {
+      agentbtn.setAttribute("data-done", "");
+      agentlabel.textContent = "copied, paste it to your agent";
+      setTimeout(() => {
+        agentbtn.removeAttribute("data-done");
+        agentlabel.textContent = "or copy a prompt for your agent";
+      }, 1800);
+    }).catch(() => {});
+  });
 </script>
 
 </body>
