@@ -194,8 +194,22 @@ button.chip.nav:hover{ opacity: 1 }
    a row read as three equal demands, and only one of these ends the round. */
 button.chip.act{ color: var(--dim); background: none; padding: 0 10px; font-size: 11px }
 button.chip.act:hover{ color: var(--fg); background: rgba(255,255,255,.09) }
-button.chip.go{ background: #f2f2f4; color: #0b0b0d; font-weight: 550; padding: 0 13px }
-button.chip.go:hover{ background: #fff; color: #0b0b0d }
+/* The verbs are drawn, not worded: three glyphs cost half the room of three
+   words, and the instant tooltip carries the sentence. Keep alone wears
+   colour, because green-check is the one gesture that ends the round;
+   everything else is still browsing. */
+button.chip.ic{ min-width: 30px; padding: 0 }
+button.chip.ic svg{ display: block; transition: transform .16s var(--ease) }
+button.chip.ic:hover svg{ transform: scale(1.1) }
+button.chip.go{ background: #3edc97; color: #07130d; font-weight: 550; padding: 0 13px }
+button.chip.go:hover{ background: #5ceaab; color: #07130d }
+/* keep's signature: on click the check draws itself once, tail to tip, and
+   the receipt waits for the stroke to land. 23 is the path's measured length. */
+button.chip.go[data-signing] svg path{
+  stroke-dasharray: 23; stroke-dashoffset: 23;
+  animation: signdraw .2s var(--ease) .05s forwards;
+}
+@keyframes signdraw{ to{ stroke-dashoffset: 0 } }
 
 .receipt{
   display: flex; align-items: center;
@@ -310,9 +324,24 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
   .dock{ width: 100%; padding: 0 6px }
   .name{ display: none }
   .pager{ flex: 1; justify-content: center }
-  button.chip{ min-width: 30px; padding: 0 4px }
-  button.chip.act{ padding: 0 9px }
-  .tail{ margin-left: 2px; padding-left: 6px }
+  /* Every verb and every position must fit a 390px phone at once: the chips
+     are content-box (all: unset), so these paddings ride on top of min-width,
+     and the pre-icon values overflowed the dock the moment a fourth tail
+     button existed. Counted, not eyeballed. */
+  button.chip{ min-width: 24px; padding: 0 3px }
+  button.chip.nav{ padding: 0 2px }
+  button.chip.named{ padding: 0 6px }
+  button.chip.act{ padding: 0 7px }
+  button.chip.ic{ padding: 0; min-width: 26px }
+  button.chip.go{ padding: 0 8px }
+  .tail{ gap: 2px; margin-left: 2px; padding-left: 6px }
+  /* When the round outgrows the phone (six positions, or coarse-pointer
+     44px targets), the pager scrolls sideways rather than letting the dock
+     clip the verbs; positionThumb keeps the live chip centred. "safe"
+     degrades to plain center where unsupported, which just keeps today's
+     behavior. */
+  .pager{ min-width: 0; overflow-x: auto; scrollbar-width: none; justify-content: safe center }
+  .pager::-webkit-scrollbar{ display: none }
 }
 @media (pointer: coarse){
   .dock{ height: 56px } button.chip, .thumb, .receipt{ height: 44px; min-width: 44px }
@@ -321,6 +350,7 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
 @media (prefers-reduced-motion: reduce){
   .dock, .thumb, .chip, .note, .wrap, .hl{ transition: none !important; animation: none !important }
   .dock::after{ animation: none !important }
+  .chip svg, .chip svg path{ transition: none !important; animation: none !important }
 }
 `;
 
@@ -366,6 +396,47 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
     for (const c of kids || []) if (c) n.appendChild(c);
     return n;
   };
+
+  // The three verbs, drawn by hand for this dock rather than pulled from an
+  // icon set: pick is a viewfinder whose fourth corner is the cursor doing
+  // the picking, refine is two staggered sliders mid-adjustment, keep is the
+  // check. Built node by node, never from a markup string, so Trusted Types
+  // cannot break it, same as everything else here.
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const ICONS = {
+    pick: [
+      ["path", { d: "M8.5 3.5h-3a2 2 0 0 0-2 2v3" }],
+      ["path", { d: "M15.5 3.5h3a2 2 0 0 1 2 2v3" }],
+      ["path", { d: "M3.5 15.5v3a2 2 0 0 0 2 2h3" }],
+      ["path", { d: "M11.5 11.5l9 3.4-4 1.6-1.6 4z", fill: "currentColor" }],
+    ],
+    refine: [
+      ["path", { d: "M4 8h6.4" }], ["path", { d: "M16.6 8H20" }],
+      ["circle", { cx: "13.5", cy: "8", r: "2.4" }],
+      ["path", { d: "M4 16h1.4" }], ["path", { d: "M11.6 16H20" }],
+      ["circle", { cx: "8.5", cy: "16", r: "2.4" }],
+    ],
+    keep: [
+      ["path", { d: "M4.5 12.6l5.1 5.1L19.5 6.6", "stroke-width": "2.4" }],
+    ],
+  };
+  function icon(name) {
+    const s = document.createElementNS(SVG_NS, "svg");
+    s.setAttribute("viewBox", "0 0 24 24");
+    s.setAttribute("width", "15"); s.setAttribute("height", "15");
+    s.setAttribute("fill", "none");
+    s.setAttribute("stroke", "currentColor");
+    s.setAttribute("stroke-width", "1.8");
+    s.setAttribute("stroke-linecap", "round");
+    s.setAttribute("stroke-linejoin", "round");
+    s.setAttribute("aria-hidden", "true");
+    for (const [tag, attrs] of ICONS[name]) {
+      const n = document.createElementNS(SVG_NS, tag);
+      for (const k in attrs) n.setAttribute(k, attrs[k]);
+      s.appendChild(n);
+    }
+    return s;
+  }
 
   const container = document.createElement("script");
   container.setAttribute("data-variate", "");
@@ -424,6 +495,7 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
   let optimistic = null;    // { set, n, at } until the server's own reading agrees
   const markerSeen = new Set(); // sets we have seen wearing data-variate-section
   let keeping = false;      // a keep POST in flight
+  let signing = false;      // the keep check is drawing itself; renders hold
   let askOpen = false;      // the refine input is up
   let exiting = false;      // playing the goodbye slide
   let collapsed = sessionStorage.getItem("variate.collapsed") === "1";
@@ -521,7 +593,12 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
     noteEl.toggleAttribute("data-on", !!text);
     noteEl.toggleAttribute("data-copy", !!(opts && opts.copy));
     noteEl.onclick = opts && opts.copy
-      ? () => { navigator.clipboard?.writeText(opts.copy).then(() => note("copied")); }
+      ? () => {
+        // A denied or absent clipboard must fail quietly: the text is
+        // already on screen, and an unhandled rejection helps nobody.
+        const p = navigator.clipboard && navigator.clipboard.writeText(opts.copy);
+        if (p) p.then(() => note("copied")).catch(() => {});
+      }
       : null;
     if (text && !(opts && opts.sticky)) noteTimer = setTimeout(() => note(""), opts?.ms || 2600);
   }
@@ -546,6 +623,7 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
       const want = nb.left + nb.width / 2 - wb.left - tipEl.offsetWidth / 2;
       const max = Math.max(0, wb.width - tipEl.offsetWidth);
       tipEl.style.left = Math.max(0, Math.min(want, max)) + "px";
+      tipEl.__owner = node;
       tipEl.setAttribute("data-on", "");
     };
     const hide = () => tipEl.removeAttribute("data-on");
@@ -643,7 +721,9 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
     // different (busy) never does: the file is already switched, the next
     // keypress is a new decision, and holding the keys hostage to a render
     // deadline froze the card for seconds on variants that reuse the copy.
-    if (!s || switching) return;
+    // A keep in flight counts as a write: the verdict already names its
+    // position, and flipping under it would make the receipt a lie.
+    if (!s || switching || keeping) return;
     if (keptFor(s)) return;
     if (!(s.have || []).includes(n)) return;
 
@@ -856,20 +936,34 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
     keeping = true;
     const n = atOf(s) ?? null;
     const label = n ? (s.plan[n - 1]?.name ?? null) : "your edit";
+    // The signature moment: the check draws itself once, and the receipt
+    // waits for the stroke to land. `signing` holds every render for that
+    // window, because the sidecar echoes our own ask over SSE within
+    // milliseconds and would otherwise rebuild the tail mid-stroke.
+    const t0 = Date.now();
+    const kBtn = refs ? refs.tail.querySelector("button.chip.go") : null;
+    if (kBtn && !REDUCED) { signing = true; kBtn.setAttribute("data-signing", ""); }
     post("/request", { type: "done", params: { set: s.name, n, label } })
       .then(() => {
-        keeping = false;
-        setKept(s, n, label);
-        closeMenu(); closeAsk(); stopPick();
-        const kept = n ? `kept ${n}${label ? ` \u00b7 ${label}` : ""}` : "kept your edit";
-        note(agentHere() ? kept : `${kept} \u00b7 send your agent any message to wrap up`,
-          { ms: agentHere() ? 2600 : 6000 });
-        sig = ""; render();
+        const settle = () => {
+          signing = false;
+          keeping = false;
+          setKept(s, n, label);
+          closeMenu(); closeAsk(); stopPick();
+          const kept = n ? `kept ${n}${label ? ` \u00b7 ${label}` : ""}` : "kept your edit";
+          note(agentHere() ? kept : `${kept} \u00b7 send your agent any message to wrap up`,
+            { ms: agentHere() ? 2600 : 6000 });
+          sig = ""; render();
+        };
+        setTimeout(settle, signing ? Math.max(0, 300 - (Date.now() - t0)) : 0);
       })
       .catch((e) => {
+        signing = false;
         keeping = false;
-        if (e?.status) { note(`could not keep · ${e.message}`, { ms: 6000 }); return; }
-        offline = true; sig = ""; render();
+        if (kBtn) kBtn.removeAttribute("data-signing");
+        sig = "";  // the hold may have swallowed a render
+        if (e?.status) { note(`could not keep · ${e.message}`, { ms: 6000 }); render(); return; }
+        offline = true; render();
         note(`say: keep ${n ?? "the live one"} of the ${s.name}`,
           { copy: `keep ${n ?? "the live one"} of the ${s.name}`, sticky: true });
       });
@@ -1034,6 +1128,10 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
   }
 
   function render() {
+    // Nothing repaints while the keep check is drawing: the next render is
+    // the receipt, and it arrives when the stroke lands (or on the failure
+    // path, which resets `sig` so nothing stays stale).
+    if (signing) return;
     const next = signature();
     if (next === sig) { positionThumb(); return; }
     sig = next;
@@ -1148,12 +1246,16 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
         ? (here ? "drawing" : "stalled")
         : (here ? "sent" : "saved");
       const b = el("button", { class: "chip act", type: "button", text: word });
-      tip(b, ask.bucket === "working"
-        ? (here ? ask.label : "your agent went quiet on this one")
-        : (here ? "your agent is on it" : "send your agent any message and it picks this up"));
+      // The tooltip answers "what did I send?", the click answers "so what
+      // happens now?". The note right after a send already says the second
+      // one, and a chip that appears under a resting pointer shows its tip
+      // immediately, so the two must never carry the same sentence.
+      tip(b, word === "stalled" ? "your agent went quiet on this one" : ask.label);
       b.onclick = word === "stalled"
         ? () => note(`say: ${ask.label}`, { copy: ask.label, sticky: true })
-        : () => note(ask.label, { ms: 3200 });
+        : word === "drawing"
+          ? () => note(ask.label, { ms: 3200 })
+          : () => note(here ? "your agent is on it" : "send your agent any message and it picks this up", { ms: 3200 });
       refs.tail.appendChild(b);
     } else {
       // A pick aimed at another section is still worth showing, but as a
@@ -1165,17 +1267,22 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
         b.onclick = () => note(g.label, { ms: 3200 });
         refs.tail.appendChild(b);
       }
-      const p = el("button", { class: "chip act", type: "button", text: picking ? "cancel" : "pick" });
-      tip(p, picking ? "cancel" : "click a section to vary it", picking ? "esc" : null);
+      const p = picking
+        ? el("button", { class: "chip act", type: "button", text: "cancel" })
+        : el("button", { class: "chip act ic", type: "button", "aria-label": "pick a section" });
+      if (!picking) p.appendChild(icon("pick"));
+      tip(p, picking ? "cancel" : "pick · click a section to vary it", picking ? "esc" : null);
       p.onclick = () => (picking ? stopPick() : startPick());
       refs.tail.appendChild(p);
       if (canDecide(s)) {
-        const r = el("button", { class: "chip act", type: "button", text: "refine" });
-        tip(r, "more like this one, but ... · or 2's layout with 3's palette");
+        const r = el("button", { class: "chip act ic", type: "button", "aria-label": "refine this one" });
+        r.appendChild(icon("refine"));
+        tip(r, "refine · more like this one, but ...");
         r.onclick = openAsk;
         refs.tail.appendChild(r);
-        const k = el("button", { class: "chip act go", type: "button", text: "keep" });
-        tip(k, "this is the one · your agent wraps up", "enter");
+        const k = el("button", { class: "chip go ic", type: "button", "aria-label": "keep this one" });
+        k.appendChild(icon("keep"));
+        tip(k, "keep · this is the one, your agent wraps up", "enter");
         k.onclick = keep;
         refs.tail.appendChild(k);
       }
@@ -1191,6 +1298,11 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
     // the moment between keep and the agent's cleanup.
     dock.toggleAttribute("data-pending", ts === "pending" || (ts === "receipt" && scopedAsks(s).length > 0));
 
+    // A rebuild can remove the button the pointer is resting on (keep clears
+    // the whole tail), and no pointerleave ever fires for a node that left the
+    // document, so the tooltip would stay up, orphaned, until the next hover.
+    if (tipEl.hasAttribute("data-on") && !(tipEl.__owner && tipEl.__owner.isConnected)) hideTip();
+
     positionThumb();
   }
 
@@ -1204,6 +1316,14 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
     refs.thumb.removeAttribute("hidden");
     refs.thumb.style.setProperty("--x", chip.offsetLeft + "px");
     refs.thumb.style.width = chip.offsetWidth + "px";
+    // A pager that had to become scrollable keeps the live position in view.
+    const pg = refs.pager;
+    if (pg.scrollWidth > pg.clientWidth + 1) {
+      pg.scrollTo({
+        left: chip.offsetLeft - (pg.clientWidth - chip.offsetWidth) / 2,
+        behavior: REDUCED ? "auto" : "smooth",
+      });
+    }
   }
 
   // Step through the positions that actually exist, so a gap or a still
@@ -1262,7 +1382,12 @@ button.row .cost{ display: block; margin-top: 3px; font-size: 10px; opacity: .62
       const landed = (s.have || []).includes(i);
       const p = s.plan[i - 1] || {};
       const lbl = p.name ?? (landed ? `variant ${i}` : "drawing");
-      const tagText = kept && kept.n === i ? "kept" : (landed && i === atOf(s) ? "live" : null);
+      // The right-edge tag tells the row's state; a planned position that
+      // has no file yet says so here too, not only in the pager tooltip.
+      const tagText = kept && kept.n === i ? "kept"
+        : landed && i === atOf(s) ? "live"
+        : !landed ? "drawing"
+        : null;
       const row = el("button", { class: "row", type: "button", role: "menuitem" }, [
         el("span", { class: "pn", text: String(i) }),
         el("span", {}, [
