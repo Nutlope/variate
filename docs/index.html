@@ -237,9 +237,16 @@
   .dock .dchip[data-on]:hover{ background: var(--fg); color: var(--ink-inverse) }
   .dock .dchip i{ font-style: normal; font-weight: 400; display: none }
   .dock .dchip[data-on] i{ display: inline }
-  .dock .dkeep{ background: var(--fg); color: var(--ink-inverse); font-weight: 500 }
-  .dock .dkeep:hover{ background: var(--fg-bright); color: var(--ink-inverse) }
-  .dock[data-kept] .dchip, .dock[data-kept] .dnav{ opacity: .4; pointer-events: none }
+  /* the verbs, drawn: same glyphs as client/card.js. Keep alone wears
+     colour, because the green check is the one gesture that ends a round. */
+  .dock .dico{ padding: 0; width: 34px; justify-content: center }
+  .dock .dico svg{ display: block }
+  .dock .dkeep{ background: #3edc97; color: #07130d; font-weight: 500 }
+  .dock .dkeep:hover{ background: #5ceaab; color: #07130d }
+  .dock .dkeep svg path{ stroke-dasharray: 23; stroke-dashoffset: 0 }
+  .dock .dkeep[data-signing] svg path{ stroke-dashoffset: 23; animation: dsign .2s var(--ease) .05s forwards }
+  @keyframes dsign{ to{ stroke-dashoffset: 0 } }
+  .dock[data-kept] .dchip, .dock[data-kept] .dnav, .dock[data-kept] .dico{ opacity: .4; pointer-events: none }
   .dock[data-kept] .dkeep{ background: none; color: var(--accent); font-weight: 400; pointer-events: none }
   .dockhint{
     position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%);
@@ -324,7 +331,7 @@
           and the page really changes. Each version has a name and
           <span class="k">names its tradeoff</span>, so you know what you
           are giving up before you choose.</p>
-          <img src="img/menu.webp" alt="The card's menu, open: the question, what should the hero lead with, and four named versions each listing its cost" width="1949" height="1020">
+          <img src="img/menu.webp" alt="The card's menu, open: the question, how loud should the hero speak, and four named versions each listing its cost" width="1284" height="672">
         </div>
       </li>
 
@@ -335,16 +342,17 @@
           <span class="k">2's layout with 3's palette</span>. Each part comes
           whole from one version, never averaged into mush.</p>
           <p>What you turn down is remembered. Dead ideas stay dead.</p>
-          <img src="img/refine.webp" alt="The refine input above the card, with a typed steer: 2's layout with 3's palette" width="1949" height="474">
+          <img src="img/refine.webp" alt="The refine input above the card, with a typed steer: 2's layout with 3's palette" width="1200" height="292">
         </div>
       </li>
 
       <li>
         <div class="lead"><span class="n">04</span><h3>Keep</h3></div>
         <div>
-          <p><span class="key">enter</span> and that version is your file.
-          The others are gone. <span class="k">git diff</span> shows the
-          design you chose and nothing else.</p>
+          <p><span class="key">enter</span> or the green check, and that
+          version is your file. The others are gone.
+          <span class="k">git diff</span> shows the design you chose and
+          nothing else.</p>
         </div>
       </li>
 
@@ -355,7 +363,7 @@
           card tells your agent exactly what you clicked (the section, its
           heading, the route it lives on), so the ask lands on the right
           file. Sidebars, headers, and icon rows included.</p>
-          <img src="img/pick.webp" alt="Pick mode: a violet highlight and section tag over the features grid of the page" width="2880" height="1800">
+          <img src="img/pick.webp" alt="Pick mode: a violet highlight and section tag over the features section of the page" width="2880" height="1800">
         </div>
       </li>
 
@@ -397,7 +405,9 @@
   <button class="dchip" type="button" data-n="4">4<i></i></button>
   <button class="dnav" type="button" data-step="1" aria-label="next variant">›</button>
   <span class="dsep"></span>
-  <button class="dkeep" type="button">keep</button>
+  <button class="dico" type="button" id="dpick" aria-label="pick, which in the real card starts a round on another section"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 3.5h-3a2 2 0 0 0-2 2v3"/><path d="M15.5 3.5h3a2 2 0 0 1 2 2v3"/><path d="M3.5 15.5v3a2 2 0 0 0 2 2h3"/><path d="M11.5 11.5l9 3.4-4 1.6-1.6 4z" fill="currentColor"/></svg></button>
+  <button class="dico" type="button" id="drefine" aria-label="refine, which in the real card asks for tighter takes"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h6.4"/><path d="M16.6 8H20"/><circle cx="13.5" cy="8" r="2.4"/><path d="M4 16h1.4"/><path d="M11.6 16H20"/><circle cx="8.5" cy="16" r="2.4"/></svg></button>
+  <button class="dkeep" type="button" aria-label="keep this one"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 12.6l5.1 5.1L19.5 6.6"/></svg></button>
 </div>
 
 <script>
@@ -427,12 +437,31 @@
   function keep() {
     if (kept) return;
     kept = true;
-    dock.setAttribute("data-kept", "");
-    dock.querySelector(".dkeep").textContent = "kept " + at + " · " + names[at];
-    hint.setAttribute("data-gone", "");
+    const dkeep = dock.querySelector(".dkeep");
     const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    document.getElementById("install").scrollIntoView({ behavior: still ? "auto" : "smooth" });
+    const settle = () => {
+      dock.setAttribute("data-kept", "");
+      dkeep.textContent = "kept " + at + " · " + names[at];
+      hint.setAttribute("data-gone", "");
+      document.getElementById("install").scrollIntoView({ behavior: still ? "auto" : "smooth" });
+    };
+    // The signature: the check draws itself once, then the receipt.
+    if (still) return settle();
+    dkeep.setAttribute("data-signing", "");
+    setTimeout(settle, 300);
   }
+  // Pick and refine are the real card's other two verbs; here they teach.
+  let hintTimer = null;
+  function say(text) {
+    hint.textContent = text;
+    hint.removeAttribute("data-gone");
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => hint.setAttribute("data-gone", ""), 3200);
+  }
+  document.getElementById("dpick").addEventListener("click", () =>
+    say("pick · in the real card, click any section of your page to vary it next"));
+  document.getElementById("drefine").addEventListener("click", () =>
+    say("refine · type a steer, your agent draws tighter takes"));
   // The card rides with the section it belongs to.
   if ("IntersectionObserver" in window) {
     const io = new IntersectionObserver(([e]) => {
